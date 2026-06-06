@@ -8,7 +8,6 @@ on:
 
 jobs:
   test:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +21,7 @@ jobs:
 
   build-and-deploy:
     if: github.event_name == 'push'
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +31,6 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-
-      - name: Run tests
-        run: ./mvnw test
 
       - name: Prepare Oracle wallet for Docker build
         env:
