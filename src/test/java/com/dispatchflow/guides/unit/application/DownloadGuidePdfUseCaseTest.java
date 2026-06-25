@@ -75,4 +75,6 @@ class DownloadGuidePdfUseCaseTest {
                 LocalDate.of(2026, 6, 2),
                 "responsable@empresa.cl");
     }
+
 }
+
