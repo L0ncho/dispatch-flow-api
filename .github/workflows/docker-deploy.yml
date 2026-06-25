@@ -64,6 +64,9 @@ jobs:
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          #nuevas variables azure
+          AZURE_B2C_ISSUER_URI: ${{ secrets.AZURE_B2C_ISSUER_URI }}
+          AZURE_B2C_JWK_SET_URI: ${{ secrets.AZURE_B2C_JWK_SET_URI }}
         run: |
           mkdir -p ~/.ssh
           echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key.pem
@@ -89,4 +92,6 @@ jobs:
                -e AWS_REGION='${AWS_REGION}' \
                -e S3_BUCKET_NAME='${S3_BUCKET_NAME}' \
                -e EFS_BASE_PATH=/app/efs \
+               -e AZURE_B2C_ISSUER_URI='${AZURE_B2C_ISSUER_URI}' \
+               -e AZURE_B2C_JWK_SET_URI='${AZURE_B2C_JWK_SET_URI}' \
                ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest"
