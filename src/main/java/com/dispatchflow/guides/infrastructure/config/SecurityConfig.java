@@ -23,11 +23,11 @@ public class SecurityConfig {
                 // 1. Actuator / Healthcheck público (para el API Gateway / Load Balancer)
                 .requestMatchers("/actuator/health").permitAll()
                 
-                // 2. Rol 1: Permitir SOLO usar el endpoint de Descargar guías (Ejemplo de ruta)
-                .requestMatchers(HttpMethod.GET, "/guides/*/download").hasAnyAuthority("ROLE_DESCARGA", "ROLE_ADMIN")
+                // 2. Rol 1: Permitir SOLO usar el endpoint de Descargar guías 
+                .requestMatchers(HttpMethod.GET, "/api/guides/*/download").hasAnyAuthority("ROLE_DESCARGA", "ROLE_ADMIN")
                 
                 // 3. Rol 2: Permitir el uso del resto de endpoints (Crear, Modificar, Eliminar, Consultar)
-                .requestMatchers("/guides/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers("/api/guides/**").hasAuthority("ROLE_ADMIN")
                 
                 // Cualquier otra petición debe estar autenticada
                 .anyRequest().authenticated()
