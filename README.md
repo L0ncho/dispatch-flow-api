@@ -1,6 +1,15 @@
 # dispatch-flow-api
 
-API para gestión de guías de despacho con generación automática de PDF, almacenamiento temporal en EFS y subida automática a AWS S3.
+API para gestión de guías de despacho con arquitectura Cloud Native. Incluye generación automática de PDF, persistencia en Oracle ATP, almacenamiento definitivo en AWS S3, y protección perimetral mediante AWS API Gateway y Azure AD B2C.
+
+## 🛡️ Seguridad e Identidad (IDaaS)
+
+El sistema delega la identidad y la exposición a servicios administrados en la nube:
+- **API Gateway (AWS):** Todos los endpoints están ocultos detrás de una integración Proxy (`ANY /{proxy+}`). Ninguna petición anónima llega al servidor EC2.
+- **Azure AD B2C:** Actúa como proveedor de identidad. El API Gateway valida la firma del token JWT antes de permitir el enrutamiento.
+- **Roles (RBAC):** El backend valida el claim `extension_Rol` inyectado por Azure:
+  - `ROLE_DESCARGA`: Permite únicamente el endpoint de descarga de PDFs.
+  - `ROLE_ADMIN`: Acceso total al resto de operaciones (CRUD y búsqueda).
 
 ## Requisitos
 
@@ -8,6 +17,7 @@ API para gestión de guías de despacho con generación automática de PDF, alma
 - Maven 3.9+ (incluido vía `./mvnw`)
 - Docker (para desarrollo local con LocalStack)
 - Wallet Oracle Autonomous DB (solo para `./run-prod` o Docker prod)
+- Tenant de Azure AD B2C configurado con el atributo `Rol` (para despliegue en la nube)
 
 ## Ejecutar en local (H2 + LocalStack)
 
@@ -93,7 +103,7 @@ Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=fa
 Al **crear** o **actualizar** una guía, el sistema:
 
 1. Genera un PDF con Apache PDFBox
-2. Lo guarda en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
+2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
 3. Sube el mismo PDF a S3 con la misma clave relativa
 4. Persiste `efsPath`, `s3Key` y el status `UPLOADED_TO_S3`
 
@@ -148,23 +158,26 @@ Con la aplicación en ejecución:
 | Usuario | `sa` |
 | Contraseña | *(vacía)* |
 
-## Endpoints
+## Endpoints Protegidos
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/api/guides` | Crear guía, PDF en EFS y S3 |
-| GET | `/api/guides/{id}` | Obtener por ID |
-| GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) |
-| GET | `/api/guides` | Listar guías activas |
-| PUT | `/api/guides/{id}` | Actualizar guía y regenerar PDF + S3 |
-| DELETE | `/api/guides/{id}` | Borrar objeto S3 + eliminación lógica |
-| GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha |
+Todas las peticiones en producción deben incluir el header `Authorization: Bearer <Token>`.
 
-El campo `guideNumber` lo genera el sistema. La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
+| Método | Ruta | Descripción | Rol Requerido |
+|--------|------|-------------|---------------|
+| POST | `/api/guides` | Crear guía, PDF en EFS y S3 | `ROLE_ADMIN` |
+| GET | `/api/guides/{id}` | Obtener por ID | `ROLE_ADMIN` |
+| GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) | `ROLE_DESCARGA` o `ADMIN` |
+| GET | `/api/guides` | Listar guías activas | `ROLE_ADMIN` |
+| PUT | `/api/guides/{id}` | Actualizar guía y regenerar PDF + S3 | `ROLE_ADMIN` |
+| DELETE | `/api/guides/{id}` | Borrar objeto S3 + eliminación lógica | `ROLE_ADMIN` |
+| GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha | `ROLE_ADMIN` |
 
-## Ejemplo Postman: crear guía
+La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
 
-**POST** `http://localhost:8080/api/guides`
+## Ejemplo Postman: crear guía (Producción)
+
+**POST** `https://<TU-API-GATEWAY-URL>/api/guides`  
+**Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
 
 ```json
 {
@@ -180,21 +193,17 @@ El campo `guideNumber` lo genera el sistema. La eliminación es lógica (`status
 
 Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`.
 
-Verificar EFS: `./tmp/efs/guides/2026-06-02/transportes-rapidos/`
-
-Verificar S3: `awslocal s3 ls s3://dispatch-flow-local/guides/2026-06-02/transportes-rapidos/`
-
-Colección Postman: [`postman/dispatch-flow-api.postman_collection.json`](postman/dispatch-flow-api.postman_collection.json)
-
 ## Ejemplo Postman: descargar PDF
 
-**GET** `http://localhost:8080/api/guides/{id}/download`
+**GET** `https://<TU-API-GATEWAY-URL>/api/guides/{id}/download`  
+**Headers:** `Authorization: Bearer <TOKEN_DESCARGA>`
 
 Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
 
 ## Ejemplo Postman: búsqueda
 
-**GET** `http://localhost:8080/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`
+**GET** `https://<TU-API-GATEWAY-URL>/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`  
+**Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
 
 ## Arquitectura
 
@@ -202,10 +211,11 @@ El proyecto sigue arquitectura hexagonal (inside-out):
 
 - **Dominio**: entidades, value objects, `GuidePdfPathBuilder`, repositorio
 - **Aplicación**: casos de uso, `GuidePdfEfsStorage`, `GuidePdfS3Storage`, puertos PDF/EFS/S3
-- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST
+- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT)
 
-## Health check
+## Health check (Público)
 
 ```bash
-curl http://localhost:8080/actuator/health
+curl https://<TU-API-GATEWAY-URL>/actuator/health
+# o localmente: curl http://localhost:8080/actuator/health
 ```
