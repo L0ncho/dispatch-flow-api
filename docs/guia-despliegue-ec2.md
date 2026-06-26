@@ -7,6 +7,7 @@ Despliegue mediante [`.github/workflows/docker-deploy.yml`](../.github/workflows
 - Aplicación operativa en local con `./run-prod` o Docker. (Recomendado)
 - Wallet Oracle en `Wallet_DISPATCHFLOWDB/` (generado desde `Wallet_DISPATCHFLOWDB.zip`).
 - Credenciales Oracle y AWS en `.env` (mismos valores que se usarán en los secrets de GitHub).
+- **NUEVO (Semana 6):** Tenant de Azure AD B2C configurado (con atributo `Rol`) y un AWS API Gateway apuntando a la instancia EC2.
 
 La wallet y el `.env` **no** se copian manualmente al servidor EC2. La wallet se incluye en la imagen durante el build en CI; usuario, contraseña Oracle y credenciales S3 se inyectan en el contenedor desde secrets de GitHub.
 
@@ -139,6 +140,8 @@ Secuencia del job `build-and-deploy`:
 
 ## 5. Verificación
 
+*(Nota: Al integrar Spring Security, las llamadas directas a la IP darán error 401. Usa la validación por API Gateway descrita más abajo).*
+
 Sustituir `<IP_EC2>` por la IP pública de la instancia:
 
 ```text
@@ -146,7 +149,7 @@ http://<IP_EC2>:8080/actuator/health
 http://<IP_EC2>:8080/api/guides
 ```
 
-Crear una guía de prueba:
+Crear una guía de prueba directa:
 
 ```bash
 curl -X POST "http://<IP_EC2>:8080/api/guides" \
@@ -162,8 +165,6 @@ curl -X POST "http://<IP_EC2>:8080/api/guides" \
   }'
 ```
 
-Respuesta esperada: `201 Created` con `status: UPLOADED_TO_S3` y `s3Key` poblado.
-
 Comprobar PDF en EFS (en el EC2):
 
 ```bash
@@ -171,9 +172,27 @@ ls -R /mnt/dispatch-flow-efs/guides/
 docker exec dispatch-flow-api ls -R /app/efs/guides/
 ```
 
-Endpoint `/actuator/health`: respuesta con `"status":"UP"`.
+### NUEVO: Verificación en Producción (Vía API Gateway)
 
-Errores de despliegue: revisar el job `build-and-deploy` en **Actions** del repositorio.
+Una vez expuesto mediante AWS API Gateway y asegurado con Azure AD B2C, todas las peticiones deben usar el token JWT del rol correspondiente (`ADMIN` o `DESCARGA`).
+
+Sustituir `<TU-API-GATEWAY-URL>` por la URL de invocación de AWS:
+
+```bash
+curl -X POST "https://<TU-API-GATEWAY-URL>/api/guides" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TU_TOKEN_JWT_ADMIN>" \
+  -d '{
+    "carrierName": "Transportes Rápidos",
+    "recipientName": "María González",
+    "originAddress": "Av. Providencia 1234, Santiago",
+    "destinationAddress": "Calle Huérfanos 567, Santiago",
+    "description": "Prueba API Gateway",
+    "dispatchDate": "2026-06-02",
+    "ownerEmail": "responsable@empresa.cl"
+  }'
+```
+Respuesta esperada: `201 Created` con `status: UPLOADED_TO_S3` y `s3Key` poblado.
 
 ---
 
@@ -185,6 +204,7 @@ Errores de despliegue: revisar el job `build-and-deploy` en **Actions** del repo
 | Local prod (`./run-prod`) | `Wallet_DISPATCHFLOWDB/` | `.env` | `.env` | `./tmp/efs` o `/app/efs` | Oracle ATP |
 | GitHub | `ORACLE_WALLET_BASE64` | `SPRING_DATASOURCE_*` | secrets AWS | — | Oracle ATP |
 | EC2 | Imagen Docker (`/app/wallet`) | Variables en `docker run` | Mismas variables S3 | Host `/mnt/dispatch-flow-efs` → contenedor `/app/efs` | Oracle ATP |
+| **Gateway (Nuevo)** | — | — | — | — | Acceso restringido por Token JWT de Azure AD |
 
 ---
 
