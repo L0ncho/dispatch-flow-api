@@ -26,7 +26,7 @@ chmod +x run-local run-prod run-docker scripts/init-localstack.sh scripts/setup-
 ./run-local
 ```
 
-Este script levanta LocalStack, crea el bucket `dispatch-flow-local` y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible).
+Este script levanta LocalStack, crea el bucket `dispatch-flow-local` y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible). En local **no se requiere token JWT**; Spring Security está deshabilitado para facilitar el desarrollo.
 
 ## Oracle en producción (`./run-prod`)
 
@@ -44,18 +44,18 @@ cp .env.example .env
 ./run-prod
 ```
 
-El script descomprime el wallet en `Wallet_DISPATCHFLOWDB/`, carga `.env`, configura `TNS_ADMIN` y conecta a Oracle ATP vía alias `dispatchflowdb_high`.
+El script descomprime el wallet en `Wallet_DISPATCHFLOWDB/` (carpeta local, no versionada), carga `.env`, configura `TNS_ADMIN` y conecta a Oracle ATP. El alias TNS depende de tu wallet; el default es `dispatchflowdb_high`.
 
 | Variable | Descripción |
 |----------|-------------|
-| `SPRING_DATASOURCE_URL` | Default: `jdbc:oracle:thin:@dispatchflowdb_high` |
+| `SPRING_DATASOURCE_URL` | Default: `jdbc:oracle:thin:@dispatchflowdb_high` (ajustar al alias de tu wallet) |
 | `SPRING_DATASOURCE_USERNAME` | Usuario Oracle |
 | `SPRING_DATASOURCE_PASSWORD` | Contraseña Oracle |
 | `TNS_ADMIN` | Default: `./Wallet_DISPATCHFLOWDB` |
 | `AWS_REGION` | Región S3 |
 | `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
 
-Archivos sensibles del wallet están en `.gitignore` (`ewallet.*`, `cwallet.sso`, `*.jks`). No versionar `.env`.
+Archivos del wallet no se versionan (carpeta `Wallet_DISPATCHFLOWDB/` en `.gitignore`). Cada desarrollador provee su propio zip local y secret `ORACLE_WALLET_BASE64` en CI. No versionar `.env`.
 
 Despliegue automatizado en EC2: [docs/guia-despliegue-ec2.md](docs/guia-despliegue-ec2.md).
 
@@ -158,12 +158,12 @@ Con la aplicación en ejecución:
 | Usuario | `sa` |
 | Contraseña | *(vacía)* |
 
-## Endpoints Protegidos
+## Endpoints
 
-Todas las peticiones en producción deben incluir el header `Authorization: Bearer <Token>`.
+En **producción** (perfil `prod`) todos los endpoints requieren `Authorization: Bearer <Token>` excepto `/actuator/health`. En **local** (perfil `local`) los endpoints son accesibles sin autenticación.
 
-| Método | Ruta | Descripción | Rol Requerido |
-|--------|------|-------------|---------------|
+| Método | Ruta | Descripción | Rol Requerido (prod) |
+|--------|------|-------------|----------------------|
 | POST | `/api/guides` | Crear guía, PDF en EFS y S3 | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}` | Obtener por ID | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) | `ROLE_DESCARGA` o `ADMIN` |
@@ -173,6 +173,30 @@ Todas las peticiones en producción deben incluir el header `Authorization: Bear
 | GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha | `ROLE_ADMIN` |
 
 La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
+
+## Ejemplo Postman: crear guía (Local)
+
+**POST** `http://localhost:8080/api/guides`
+
+```json
+{
+  "carrierName": "Transportes Rápidos",
+  "recipientName": "María González",
+  "originAddress": "Av. Providencia 1234, Santiago",
+  "destinationAddress": "Calle Huérfanos 567, Santiago",
+  "description": "Electrónicos",
+  "dispatchDate": "2026-06-02",
+  "ownerEmail": "responsable@empresa.cl"
+}
+```
+
+Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`.
+
+Verificar EFS: `./tmp/efs/guides/2026-06-02/transportes-rapidos/`
+
+Verificar S3: `awslocal s3 ls s3://dispatch-flow-local/guides/2026-06-02/transportes-rapidos/`
+
+Colección Postman: [`postman/dispatch-flow-api.postman_collection.json`](postman/dispatch-flow-api.postman_collection.json)
 
 ## Ejemplo Postman: crear guía (Producción)
 
@@ -193,14 +217,24 @@ La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparec
 
 Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`.
 
-## Ejemplo Postman: descargar PDF
+## Ejemplo Postman: descargar PDF (Local)
+
+**GET** `http://localhost:8080/api/guides/{id}/download`
+
+Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
+
+## Ejemplo Postman: descargar PDF (Producción)
 
 **GET** `https://<TU-API-GATEWAY-URL>/api/guides/{id}/download`  
 **Headers:** `Authorization: Bearer <TOKEN_DESCARGA>`
 
 Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
 
-## Ejemplo Postman: búsqueda
+## Ejemplo Postman: búsqueda (Local)
+
+**GET** `http://localhost:8080/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`
+
+## Ejemplo Postman: búsqueda (Producción)
 
 **GET** `https://<TU-API-GATEWAY-URL>/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`  
 **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
@@ -211,9 +245,9 @@ El proyecto sigue arquitectura hexagonal (inside-out):
 
 - **Dominio**: entidades, value objects, `GuidePdfPathBuilder`, repositorio
 - **Aplicación**: casos de uso, `GuidePdfEfsStorage`, `GuidePdfS3Storage`, puertos PDF/EFS/S3
-- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT)
+- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT en perfil `prod`)
 
-## Health check (Público)
+## Health check (Público en prod)
 
 ```bash
 curl https://<TU-API-GATEWAY-URL>/actuator/health

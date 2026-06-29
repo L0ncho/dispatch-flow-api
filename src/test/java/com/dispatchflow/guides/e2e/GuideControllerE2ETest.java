@@ -4,10 +4,8 @@ import com.dispatchflow.dispatch_flow_api.DispatchFlowApiApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,16 +26,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(classes = DispatchFlowApiApplication.class)
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc
 class GuideControllerE2ETest {
 
     private static Path efsBasePath;
 
     @Autowired
     private MockMvc mockMvc;
-
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
 
     @DynamicPropertySource
     static void configureTestStorage(DynamicPropertyRegistry registry) throws Exception {
