@@ -36,7 +36,9 @@ Configurar en **Settings → Secrets and variables → Actions**:
 | `AWS_SESSION_TOKEN` | Credenciales STS temporales; omitir si no aplica |
 | `AWS_REGION` | Región del bucket S3 (ej. `us-east-1`) |
 | `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
-| `SPRING_DATASOURCE_URL` | Opcional. Por defecto: `jdbc:oracle:thin:@dispatchflowdb_high` |
+| `AZURE_B2C_ISSUER_URI` | Issuer (`iss`) del tenant Azure AD B2C que emite el JWT |
+| `AZURE_B2C_JWK_SET_URI` | URL del JWKS (claves públicas) del tenant para validar la firma del JWT |
+| `SPRING_DATASOURCE_URL` | Opcional. Por defecto: `jdbc:oracle:thin:@dispatchflowdb_high` (ajustar al alias de tu wallet) |
 
 ### S3 en producción
 
@@ -45,6 +47,23 @@ Configurar en **Settings → Secrets and variables → Actions**:
 3. Configurar los secrets `S3_BUCKET_NAME` y `AWS_REGION` en GitHub Actions.
 
 No definir `AWS_S3_ENDPOINT` en producción; el SDK usa el endpoint regional de AWS.
+
+### Azure AD B2C (`AZURE_B2C_ISSUER_URI` / `AZURE_B2C_JWK_SET_URI`)
+
+En perfil `prod` Spring Security se activa y valida el JWT emitido por Azure AD B2C. Estas dos variables **son obligatorias**: si faltan, el contenedor arranca pero la app falla al construir el validador de tokens y todas las peticiones autenticadas devolverán error.
+
+Obtén ambos valores del *user flow* (política) de tu tenant, normalmente desde el documento de metadata OpenID Connect:
+
+```text
+https://<TENANT>.b2clogin.com/<TENANT>.onmicrosoft.com/<POLICY>/v2.0/.well-known/openid-configuration
+```
+
+| Secret | De dónde sale |
+| ------ | ------------- |
+| `AZURE_B2C_ISSUER_URI` | Campo `issuer` del documento de metadata |
+| `AZURE_B2C_JWK_SET_URI` | Campo `jwks_uri` del documento de metadata |
+
+El backend extrae el rol del claim `extension_Rol` (`ROLE_DESCARGA` para la descarga de guías, `ROLE_ADMIN` para el resto). En local (`./run-local`) estas variables no se usan: la seguridad JWT solo aplica en `prod`.
 
 ### Generar `ORACLE_WALLET_BASE64`
 
