@@ -7,7 +7,7 @@ API para gestión de guías de despacho con arquitectura Cloud Native. Incluye g
 El sistema delega la identidad y la exposición a servicios administrados en la nube:
 - **API Gateway (AWS):** Todos los endpoints están ocultos detrás de una integración Proxy (`ANY /{proxy+}`). Ninguna petición anónima llega al servidor EC2.
 - **Azure AD B2C:** Actúa como proveedor de identidad. El API Gateway valida la firma del token JWT antes de permitir el enrutamiento.
-- **Roles (RBAC):** El backend valida el claim `extension_Rol` inyectado por Azure:
+- **Roles (RBAC):** El backend valida el claim `roles` (App Roles de Azure) con prefijo `ROLE_`:
   - `ROLE_DESCARGA`: Permite únicamente el endpoint de descarga de PDFs.
   - `ROLE_ADMIN`: Acceso total al resto de operaciones (CRUD y búsqueda).
 
@@ -17,7 +17,7 @@ El sistema delega la identidad y la exposición a servicios administrados en la 
 - Maven 3.9+ (incluido vía `./mvnw`)
 - Docker (para desarrollo local con LocalStack)
 - Wallet Oracle Autonomous DB (solo para `./run-prod` o Docker prod)
-- Tenant de Azure AD B2C configurado con el atributo `Rol` (para despliegue en la nube)
+- Tenant de Azure AD B2C con App Roles `DESCARGA` y `ADMIN` asignados a la aplicación (para despliegue en la nube)
 
 ## Ejecutar en local (H2 + LocalStack)
 

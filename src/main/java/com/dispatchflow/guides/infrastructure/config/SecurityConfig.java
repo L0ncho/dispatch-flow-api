@@ -41,12 +41,10 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Este conversor extrae el custom claim de Azure AD B2C y lo convierte en un Rol de Spring Security
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("extension_Rol");
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
         grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
 
         JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();

@@ -2,13 +2,43 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "dispatch-flow-api",
-    "description": "Colección para probar el CRUD de guías de despacho con PDF automático en EFS y subida a S3.\n\nRequisitos:\n1. Ejecutar la app: `./run-local` (LocalStack + S3) o `./mvnw spring-boot:run` con S3 deshabilitado\n2. Base URL por defecto: `http://localhost:8080`\n\nFlujo sugerido:\n1. Create Guide (EFS + S3, guarda `guideId`)\n2. Download Guide PDF\n3. Get Guide by ID\n4. List Guides\n5. Search Guides\n6. Update Guide (regenera EFS + S3)\n7. Delete Guide (borra objeto S3)",
+    "description": "Colección para probar el CRUD de guías de despacho con PDF automático en EFS y subida a S3.\n\nRequisitos:\n1. Ejecutar la app: `./run-local` (LocalStack + S3, sin token) o desplegada en prod detrás de API Gateway + Azure AD B2C (con token).\n2. Base URL por defecto: `http://localhost:8080`. En prod usar la URL del API Gateway.\n\nAutenticación (solo prod):\n- Ejecutar primero `Auth > Get Access Token` (OAuth 2.0 Client Credentials contra Azure AD B2C).\n- El token se guarda en la variable `accessToken` y todas las requests lo envían como `Authorization: Bearer` (heredado a nivel de colección).\n- En local la seguridad está deshabilitada, por lo que el token es opcional.\n\nFlujo sugerido:\n1. Get Access Token (obtiene `accessToken`)\n2. Create Guide (EFS + S3, guarda `guideId`)\n3. Download Guide PDF\n4. Get Guide by ID\n5. List Guides\n6. Search Guides\n7. Update Guide (regenera EFS + S3)\n8. Delete Guide (borra objeto S3)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
   },
   "variable": [
     {
       "key": "baseUrl",
       "value": "http://localhost:8080"
+    },
+    {
+      "key": "tokenUrl",
+      "value": "https://login.microsoftonline.com/dispatchflowapi.onmicrosoft.com/oauth2/v2.0/token"
+    },
+    {
+      "key": "clientId",
+      "value": "908ea072-acdf-4c75-a62d-1a21441d86b7"
+    },
+    {
+      "key": "clientSecret",
+      "value": ""
+    },
+    {
+      "key": "scope",
+      "value": "https://dispatchflowapi.onmicrosoft.com/908ea072-acdf-4c75-a62d-1a21441d86b7/.default"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
     },
     {
       "key": "guideId",
@@ -24,6 +54,72 @@
     }
   ],
   "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Get Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has access_token', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('accessToken', json.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{clientSecret}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{scope}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{tokenUrl}}",
+              "host": ["{{tokenUrl}}"]
+            },
+            "description": "Obtiene un token de acceso desde Azure AD B2C (OAuth 2.0 Client Credentials). El token incluye el claim `roles` con los App Roles asignados a la aplicación (`ADMIN`, `DESCARGA`).\n\nAntes de usar: completar `clientSecret` y asegurar en Azure que la app tiene App Roles creados y asignados.\n\nEl token se guarda en `accessToken`; el resto de requests lo envían como Bearer automáticamente."
+          },
+          "response": []
+        }
+      ]
+    },
     {
       "name": "Guides",
       "item": [

@@ -63,7 +63,9 @@ https://<TENANT>.b2clogin.com/<TENANT>.onmicrosoft.com/<POLICY>/v2.0/.well-known
 | `AZURE_B2C_ISSUER_URI` | Campo `issuer` del documento de metadata |
 | `AZURE_B2C_JWK_SET_URI` | Campo `jwks_uri` del documento de metadata |
 
-El backend extrae el rol del claim `extension_Rol` (`ROLE_DESCARGA` para la descarga de guías, `ROLE_ADMIN` para el resto). En local (`./run-local`) estas variables no se usan: la seguridad JWT solo aplica en `prod`.
+El backend extrae los roles del claim `roles` (App Roles de Azure: `DESCARGA`, `ADMIN` → `ROLE_DESCARGA`, `ROLE_ADMIN`). En local (`./run-local`) estas variables no se usan: la seguridad JWT solo aplica en `prod`.
+
+**App Roles en Azure (una vez):** App registration → **App roles** → crear `DESCARGA` y `ADMIN` → **Enterprise applications** → tu app → **Users and groups** (o asignar roles al service principal de la app para client credentials).
 
 ### Generar `ORACLE_WALLET_BASE64`
 
