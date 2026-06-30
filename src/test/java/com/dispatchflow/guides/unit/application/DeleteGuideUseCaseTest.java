@@ -2,8 +2,10 @@ package com.dispatchflow.guides.unit.application;
 
 import com.dispatchflow.guides.application.CreateGuideUseCase;
 import com.dispatchflow.guides.application.DeleteGuideUseCase;
+import com.dispatchflow.guides.application.UpdateGuideUseCase;
 import com.dispatchflow.guides.application.dto.CreateGuideCommand;
 import com.dispatchflow.guides.application.dto.GuideResponse;
+import com.dispatchflow.guides.application.dto.UpdateGuideCommand;
 import com.dispatchflow.guides.domain.entities.DispatchGuide;
 import com.dispatchflow.guides.domain.repositories.InMemoryGuideRepository;
 import com.dispatchflow.guides.domain.valueobjects.GuideId;
@@ -53,6 +55,30 @@ class DeleteGuideUseCaseTest {
         assertEquals(GuideStatus.DELETED, stored.getStatus());
         assertTrue(stored.isDeleted());
         assertFalse(objectStorage.contains(s3Key));
+    }
+
+    @Test
+    void removesAllS3ObjectsAfterGuideWasUpdated() {
+        GuideResponse created = createGuideUseCase.execute(sampleCommand());
+        String originalS3Key = created.s3Key();
+
+        UpdateGuideUseCase updateGuideUseCase = GuideApplicationTestSupport.updateGuideUseCase(
+                repository,
+                Clock.fixed(Instant.parse("2026-06-02T11:00:00Z"), ZoneOffset.UTC),
+                objectStorage);
+        GuideResponse updated = updateGuideUseCase.execute(created.id(), new UpdateGuideCommand(
+                "Transportes Norte",
+                "Juan Pérez",
+                "Av. Libertador 99, Santiago",
+                "Calle Estado 100, Santiago",
+                "Despacho actualizado",
+                LocalDate.of(2026, 6, 3),
+                "nuevo.responsable@empresa.cl"));
+
+        deleteGuideUseCase.execute(created.id());
+
+        assertFalse(objectStorage.contains(originalS3Key));
+        assertFalse(objectStorage.contains(updated.s3Key()));
     }
 
     @Test
