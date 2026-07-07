@@ -104,6 +104,7 @@ Al **crear** o **actualizar** una guía, el sistema:
 
 1. Genera un PDF con Apache PDFBox
 2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
+2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
 3. Sube el mismo PDF a S3 con la misma clave relativa
 4. Persiste `efsPath`, `s3Key` y el status `UPLOADED_TO_S3`
 
@@ -158,7 +159,9 @@ Con la aplicación en ejecución:
 | Usuario | `sa` |
 | Contraseña | *(vacía)* |
 
-## Endpoints
+## Endpoints Protegidos
+
+Todas las peticiones en producción deben incluir el header `Authorization: Bearer <Token>`.
 
 En **producción** (perfil `prod`) todos los endpoints requieren `Authorization: Bearer <Token>` excepto `/actuator/health`. En **local** (perfil `local`) los endpoints son accesibles sin autenticación.
 
@@ -219,7 +222,8 @@ Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y 
 
 ## Ejemplo Postman: descargar PDF (Local)
 
-**GET** `http://localhost:8080/api/guides/{id}/download`
+**GET** `https://<TU-API-GATEWAY-URL>/api/guides/{id}/download`  
+**Headers:** `Authorization: Bearer <TOKEN_DESCARGA>`
 
 Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
 
@@ -250,6 +254,8 @@ El proyecto sigue arquitectura hexagonal (inside-out):
 ## Health check (Público en prod)
 
 ```bash
+curl https://<TU-API-GATEWAY-URL>/actuator/health
+# o localmente: curl http://localhost:8080/actuator/health
 curl https://<TU-API-GATEWAY-URL>/actuator/health
 # o localmente: curl http://localhost:8080/actuator/health
 ```
