@@ -7,6 +7,7 @@ import com.dispatchflow.guides.domain.repositories.GuideRepository;
 import com.dispatchflow.guides.domain.services.GuideNumberGenerator;
 import com.dispatchflow.guides.domain.valueobjects.Email;
 import com.dispatchflow.guides.domain.valueobjects.GuideId;
+import com.dispatchflow.guides.infrastructure.adapters.RabbitMQGuidePublisher;
 
 import java.time.Clock;
 
@@ -16,6 +17,7 @@ public class CreateGuideUseCase {
     private final GuideNumberGenerator guideNumberGenerator;
     private final GuidePdfEfsStorage guidePdfEfsStorage;
     private final GuidePdfS3Storage guidePdfS3Storage;
+    private final RabbitMQGuidePublisher rabbitMQGuidePublisher;
     private final Clock clock;
 
     public CreateGuideUseCase(
@@ -23,11 +25,13 @@ public class CreateGuideUseCase {
             GuideNumberGenerator guideNumberGenerator,
             GuidePdfEfsStorage guidePdfEfsStorage,
             GuidePdfS3Storage guidePdfS3Storage,
+            RabbitMQGuidePublisher rabbitMQGuidePublisher,
             Clock clock) {
         this.guideRepository = guideRepository;
         this.guideNumberGenerator = guideNumberGenerator;
         this.guidePdfEfsStorage = guidePdfEfsStorage;
         this.guidePdfS3Storage = guidePdfS3Storage;
+        this.rabbitMQGuidePublisher = rabbitMQGuidePublisher;
         this.clock = clock;
     }
 
@@ -48,6 +52,8 @@ public class CreateGuideUseCase {
         byte[] pdfContent = guidePdfEfsStorage.storeOnEfs(guide, clock.instant());
         guidePdfS3Storage.storeOnS3(guide, pdfContent, clock.instant());
         guideRepository.save(guide);
+        GuideResponse response = GuideResponse.from(guide);
+        rabbitMQGuidePublisher.publishGuideCreated((response));
         return GuideResponse.from(guide);
     }
 }
