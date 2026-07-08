@@ -5,9 +5,11 @@ import com.dispatchflow.guides.application.dto.CreateGuideCommand;
 import com.dispatchflow.guides.application.dto.GuideResponse;
 import com.dispatchflow.guides.domain.repositories.InMemoryGuideRepository;
 import com.dispatchflow.guides.domain.valueobjects.GuideId;
+import com.dispatchflow.guides.infrastructure.adapters.RabbitMQGuidePublisher;
 import com.dispatchflow.guides.unit.application.support.GuideApplicationTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -25,13 +27,18 @@ class CreateGuideUseCaseTest {
 
     private InMemoryGuideRepository repository;
     private GuideApplicationTestSupport.InMemoryObjectStorage objectStorage;
+    private RabbitMQGuidePublisher mockPublisher;
     private CreateGuideUseCase useCase;
 
     @BeforeEach
     void setUp() {
         repository = new InMemoryGuideRepository();
         objectStorage = GuideApplicationTestSupport.inMemoryObjectStorage();
-        useCase = GuideApplicationTestSupport.createGuideUseCase(repository, FIXED_CLOCK, objectStorage);
+        
+        // Creamos un Mock (simulador) del publisher para que no intente conectarse al RabbitMQ real
+        mockPublisher = Mockito.mock(RabbitMQGuidePublisher.class);
+        
+        useCase = GuideApplicationTestSupport.createGuideUseCase(repository, FIXED_CLOCK, objectStorage, mockPublisher);
     }
 
     @Test
@@ -54,5 +61,8 @@ class CreateGuideUseCaseTest {
         assertNotNull(response.s3Key());
         assertTrue(objectStorage.contains(response.s3Key()));
         assertTrue(repository.findById(GuideId.create(response.id())).isPresent());
+        
+        
+        Mockito.verify(mockPublisher, Mockito.times(1)).publishGuideCreated(Mockito.any(GuideResponse.class));
     }
 }

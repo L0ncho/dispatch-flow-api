@@ -1,6 +1,6 @@
 # dispatch-flow-api
 
-API para gestión de guías de despacho con arquitectura Cloud Native. Incluye generación automática de PDF, persistencia en Oracle ATP, almacenamiento definitivo en AWS S3, y protección perimetral mediante AWS API Gateway y Azure AD B2C.
+API Gateway (AWS):** Cada endpoint de la API está configurado de manera explícita con su método HTTP correspondiente. Se eliminó el uso de la integración Proxy (`ANY /{proxy+}`) para garantizar un control de acceso granular y cumplir con las mejores prácticas de arquitectura. Ninguna petición anónima llega al servidor EC2.
 
 ## 🛡️ Seguridad e Identidad (IDaaS)
 
@@ -15,7 +15,7 @@ El sistema delega la identidad y la exposición a servicios administrados en la 
 
 - Java 21
 - Maven 3.9+ (incluido vía `./mvnw`)
-- Docker (para desarrollo local con LocalStack)
+- Docker (para desarrollo local con LocalStack y RabbitMQ)
 - Wallet Oracle Autonomous DB (solo para `./run-prod` o Docker prod)
 - Tenant de Azure AD B2C con App Roles `DESCARGA` y `ADMIN` asignados a la aplicación (para despliegue en la nube)
 
@@ -26,7 +26,7 @@ chmod +x run-local run-prod run-docker scripts/init-localstack.sh scripts/setup-
 ./run-local
 ```
 
-Este script levanta LocalStack, crea el bucket `dispatch-flow-local` y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible). En local **no se requiere token JWT**; Spring Security está deshabilitado para facilitar el desarrollo.
+Este script levanta LocalStack, crea el bucket `dispatch-flow-local`, inicia RabbitMQ y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible). En local **no se requiere token JWT**; Spring Security está deshabilitado para facilitar el desarrollo.
 
 ## Oracle en producción (`./run-prod`)
 
@@ -90,8 +90,8 @@ Despliegue completo vía Docker Hub: [docs/guia-despliegue-ec2.md](docs/guia-des
 ```bash
 ./mvnw test
 ```
+Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=false`) y la autoconfiguración de RabbitMQ se deshabilita durante la ejecución para garantizar que el entorno CI sea rápido y estable sin depender de brokers externos.
 
-Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=false`) para CI estable.
 
 ## Almacenamiento EFS (local / producción)
 
@@ -104,9 +104,9 @@ Al **crear** o **actualizar** una guía, el sistema:
 
 1. Genera un PDF con Apache PDFBox
 2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
-2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
 3. Sube el mismo PDF a S3 con la misma clave relativa
 4. Persiste `efsPath`, `s3Key` y el status `UPLOADED_TO_S3`
+5. Publica un evento asíncrono en **RabbitMQ**
 
 Si falla EFS o S3 durante POST/PUT, la operación completa falla.
 
@@ -167,15 +167,26 @@ En **producción** (perfil `prod`) todos los endpoints requieren `Authorization:
 
 | Método | Ruta | Descripción | Rol Requerido (prod) |
 |--------|------|-------------|----------------------|
-| POST | `/api/guides` | Crear guía, PDF en EFS y S3 | `ROLE_ADMIN` |
+| POST | `/api/guides` | Crear guía, PDF en EFS/S3 y notificar a RabbitMQ | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}` | Obtener por ID | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) | `ROLE_DESCARGA` o `ADMIN` |
 | GET | `/api/guides` | Listar guías activas | `ROLE_ADMIN` |
 | PUT | `/api/guides/{id}` | Actualizar guía y regenerar PDF + S3 | `ROLE_ADMIN` |
 | DELETE | `/api/guides/{id}` | Borrar objeto S3 + eliminación lógica | `ROLE_ADMIN` |
 | GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha | `ROLE_ADMIN` |
+| GET | `/api/queue/consume` | Consumir mensajes de la cola RabbitMQ | `ROLE_ADMIN` |
 
 La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
+
+### Flujo CI/CD (GitHub Actions)
+
+El proyecto cuenta con integración y despliegue continuo configurado para AWS EC2.
+
+|Evento              |Accion del pipeline|
+|--------------------|-------------------|
+|Pull Request > Main | Solo `./mvnw test`  |
+|Push > Main         | Tests, build, push a Docker Hub, deploy automatizado por ssh|
+
 
 ## Ejemplo Postman: crear guía (Local)
 
@@ -249,7 +260,7 @@ El proyecto sigue arquitectura hexagonal (inside-out):
 
 - **Dominio**: entidades, value objects, `GuidePdfPathBuilder`, repositorio
 - **Aplicación**: casos de uso, `GuidePdfEfsStorage`, `GuidePdfS3Storage`, puertos PDF/EFS/S3
-- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT en perfil `prod`)
+- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT en perfil `prod`), y adaptador de mensajería con **RabbitMQ**.
 
 ## Health check (Público en prod)
 

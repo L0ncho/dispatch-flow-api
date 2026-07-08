@@ -133,11 +133,10 @@ El pipeline enlaza automáticamente:
 
 - Docker instalado.
 - **EFS montado** en `/mnt/dispatch-flow-efs` ([configuracion-efs-ec2.md](configuracion-efs-ec2.md)).
-- Security group: regla de entrada TCP en el puerto **8080**.
+- Security group: regla de entrada TCP en el puerto **8080** (API) y **15672** (RabbitMQ Management).
 - Acceso SSH con la llave asociada a `EC2_SSH_KEY`.
 - No desplegar `Wallet_DISPATCHFLOWDB/` ni `.env` en el servidor.
 
----
 
 ## 4. Ejecutar el despliegue
 
@@ -155,7 +154,7 @@ Secuencia del job `build-and-deploy`:
 2. Decodifica `ORACLE_WALLET_BASE64` → carpeta `wallet/` en contexto Docker
 3. Build de imagen Docker
 4. Push a `{DOCKERHUB_USERNAME}/dispatch-flow-api:latest`
-5. SSH a EC2: `docker pull`, recreación del contenedor con volumen EFS, variables Oracle y S3
+5. SSH a EC2: Creación de red Docker compartida, despliegue del contenedor RabbitMQ garantizando su ejecución, *docker pull* de la API y despliegue del contenedor de la aplicación inyectando las variables de entorno Oracle, S3 y la conexión nativa al host `rabbitmq` dentro de la red.
 
 ---
 
@@ -224,7 +223,7 @@ Respuesta esperada: `201 Created` con `status: UPLOADED_TO_S3` y `s3Key` poblado
 | Local (`./run-local`) | No aplica | No aplica | LocalStack | `./tmp/efs` | H2 in-memory |
 | Local prod (`./run-prod`) | `Wallet_DISPATCHFLOWDB/` | `.env` | `.env` | `./tmp/efs` o `/app/efs` | Oracle ATP |
 | GitHub | `ORACLE_WALLET_BASE64` | `SPRING_DATASOURCE_*` | secrets AWS | — | Oracle ATP |
-| EC2 | Imagen Docker (`/app/wallet`) | Variables en `docker run` | Mismas variables S3 | Host `/mnt/dispatch-flow-efs` → contenedor `/app/efs` | Oracle ATP |
+| EC2 | Imagen Docker (`/app/wallet`) | Variables en `docker run` | Mismas variables S3 | Host `/mnt/dispatch-flow-efs` → contenedor `/app/efs` | Oracle ATP | Contenedor en red compartida desplegado por CI/CD |
 | **Gateway (Nuevo)** | — | — | — | — | Acceso restringido por Token JWT de Azure AD |
 
 ---
@@ -250,11 +249,15 @@ cp -R Wallet_DISPATCHFLOWDB/. wallet/
 
 docker build -t dispatch-flow-api:local .
 mkdir -p ./tmp/efs-docker
+docker network create dispatch-net
+docker run -d --name rabbitmq --network dispatch-net -p 5672:5672 rabbitmq:3-management
 docker run -d --name dispatch-flow-api -p 8080:8080 --env-file .env \
+  --link rabbitmq:rabbitmq \
   -v "$(pwd)/tmp/efs-docker:/app/efs" \
   -e SPRING_PROFILES_ACTIVE=prod \
   -e TNS_ADMIN=/app/wallet \
   -e EFS_BASE_PATH=/app/efs \
+  -e SPRING_RABBITMQ_HOST=rabbitmq \
   dispatch-flow-api:local
 
 curl http://localhost:8080/actuator/health

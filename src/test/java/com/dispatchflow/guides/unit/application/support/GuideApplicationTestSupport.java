@@ -11,11 +11,14 @@ import com.dispatchflow.guides.application.ports.ObjectStoragePort;
 import com.dispatchflow.guides.domain.repositories.GuideRepository;
 import com.dispatchflow.guides.domain.services.GuideNumberGenerator;
 import com.dispatchflow.guides.domain.services.GuidePdfPathBuilder;
+import com.dispatchflow.guides.infrastructure.adapters.RabbitMQGuidePublisher;
 import com.dispatchflow.shared.domain.DomainError;
 
 import java.time.Clock;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.mockito.Mockito;
 
 public final class GuideApplicationTestSupport {
 
@@ -25,19 +28,24 @@ public final class GuideApplicationTestSupport {
     }
 
     public static CreateGuideUseCase createGuideUseCase(GuideRepository repository, Clock clock) {
-        return createGuideUseCase(repository, clock, inMemoryObjectStorage());
+        return createGuideUseCase(repository, clock, inMemoryObjectStorage(), Mockito.mock(RabbitMQGuidePublisher.class));
     }
 
     public static CreateGuideUseCase createGuideUseCase(
             GuideRepository repository,
             Clock clock,
-            ObjectStoragePort objectStorage) {
+            ObjectStoragePort objectStorage, 
+            RabbitMQGuidePublisher rabbitMQGuidePublisher){
         return new CreateGuideUseCase(
                 repository,
                 new GuideNumberGenerator(),
                 guidePdfEfsStorage(),
                 guidePdfS3Storage(objectStorage),
+                rabbitMQGuidePublisher,
                 clock);
+    }
+    public static CreateGuideUseCase createGuideUseCase(GuideRepository repository, Clock clock, ObjectStoragePort objectStorage) {
+        return createGuideUseCase(repository, clock, objectStorage, Mockito.mock(RabbitMQGuidePublisher.class));
     }
 
     public static UpdateGuideUseCase updateGuideUseCase(
