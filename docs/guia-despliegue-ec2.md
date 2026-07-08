@@ -36,7 +36,9 @@ Configurar en **Settings → Secrets and variables → Actions**:
 | `AWS_SESSION_TOKEN` | Credenciales STS temporales; omitir si no aplica |
 | `AWS_REGION` | Región del bucket S3 (ej. `us-east-1`) |
 | `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
-| `SPRING_DATASOURCE_URL` | Opcional. Por defecto: `jdbc:oracle:thin:@dispatchflowdb_high` |
+| `AZURE_B2C_ISSUER_URI` | Issuer (`iss`) del tenant Azure AD B2C que emite el JWT |
+| `AZURE_B2C_JWK_SET_URI` | URL del JWKS (claves públicas) del tenant para validar la firma del JWT |
+| `SPRING_DATASOURCE_URL` | Opcional. Por defecto: `jdbc:oracle:thin:@dispatchflowdb_high` (ajustar al alias de tu wallet) |
 
 ### S3 en producción
 
@@ -45,6 +47,25 @@ Configurar en **Settings → Secrets and variables → Actions**:
 3. Configurar los secrets `S3_BUCKET_NAME` y `AWS_REGION` en GitHub Actions.
 
 No definir `AWS_S3_ENDPOINT` en producción; el SDK usa el endpoint regional de AWS.
+
+### Azure AD B2C (`AZURE_B2C_ISSUER_URI` / `AZURE_B2C_JWK_SET_URI`)
+
+En perfil `prod` Spring Security se activa y valida el JWT emitido por Azure AD B2C. Estas dos variables **son obligatorias**: si faltan, el contenedor arranca pero la app falla al construir el validador de tokens y todas las peticiones autenticadas devolverán error.
+
+Obtén ambos valores del *user flow* (política) de tu tenant, normalmente desde el documento de metadata OpenID Connect:
+
+```text
+https://<TENANT>.b2clogin.com/<TENANT>.onmicrosoft.com/<POLICY>/v2.0/.well-known/openid-configuration
+```
+
+| Secret | De dónde sale |
+| ------ | ------------- |
+| `AZURE_B2C_ISSUER_URI` | Campo `issuer` del documento de metadata |
+| `AZURE_B2C_JWK_SET_URI` | Campo `jwks_uri` del documento de metadata |
+
+El backend extrae los roles del claim `roles` (App Roles de Azure: `DESCARGA`, `ADMIN` → `ROLE_DESCARGA`, `ROLE_ADMIN`). En local (`./run-local`) estas variables no se usan: la seguridad JWT solo aplica en `prod`.
+
+**App Roles en Azure (una vez):** App registration → **App roles** → crear `DESCARGA` y `ADMIN` → **Enterprise applications** → tu app → **Users and groups** (o asignar roles al service principal de la app para client credentials).
 
 ### Generar `ORACLE_WALLET_BASE64`
 
@@ -112,11 +133,10 @@ El pipeline enlaza automáticamente:
 
 - Docker instalado.
 - **EFS montado** en `/mnt/dispatch-flow-efs` ([configuracion-efs-ec2.md](configuracion-efs-ec2.md)).
-- Security group: regla de entrada TCP en el puerto **8080**.
+- Security group: regla de entrada TCP en el puerto **8080** (API) y **15672** (RabbitMQ Management).
 - Acceso SSH con la llave asociada a `EC2_SSH_KEY`.
 - No desplegar `Wallet_DISPATCHFLOWDB/` ni `.env` en el servidor.
 
----
 
 ## 4. Ejecutar el despliegue
 
@@ -134,7 +154,7 @@ Secuencia del job `build-and-deploy`:
 2. Decodifica `ORACLE_WALLET_BASE64` → carpeta `wallet/` en contexto Docker
 3. Build de imagen Docker
 4. Push a `{DOCKERHUB_USERNAME}/dispatch-flow-api:latest`
-5. SSH a EC2: `docker pull`, recreación del contenedor con volumen EFS, variables Oracle y S3
+5. SSH a EC2: Creación de red Docker compartida, despliegue del contenedor RabbitMQ garantizando su ejecución, *docker pull* de la API y despliegue del contenedor de la aplicación inyectando las variables de entorno Oracle, S3 y la conexión nativa al host `rabbitmq` dentro de la red.
 
 ---
 
@@ -203,7 +223,7 @@ Respuesta esperada: `201 Created` con `status: UPLOADED_TO_S3` y `s3Key` poblado
 | Local (`./run-local`) | No aplica | No aplica | LocalStack | `./tmp/efs` | H2 in-memory |
 | Local prod (`./run-prod`) | `Wallet_DISPATCHFLOWDB/` | `.env` | `.env` | `./tmp/efs` o `/app/efs` | Oracle ATP |
 | GitHub | `ORACLE_WALLET_BASE64` | `SPRING_DATASOURCE_*` | secrets AWS | — | Oracle ATP |
-| EC2 | Imagen Docker (`/app/wallet`) | Variables en `docker run` | Mismas variables S3 | Host `/mnt/dispatch-flow-efs` → contenedor `/app/efs` | Oracle ATP |
+| EC2 | Imagen Docker (`/app/wallet`) | Variables en `docker run` | Mismas variables S3 | Host `/mnt/dispatch-flow-efs` → contenedor `/app/efs` | Oracle ATP | Contenedor en red compartida desplegado por CI/CD |
 | **Gateway (Nuevo)** | — | — | — | — | Acceso restringido por Token JWT de Azure AD |
 
 ---
@@ -229,11 +249,15 @@ cp -R Wallet_DISPATCHFLOWDB/. wallet/
 
 docker build -t dispatch-flow-api:local .
 mkdir -p ./tmp/efs-docker
+docker network create dispatch-net
+docker run -d --name rabbitmq --network dispatch-net -p 5672:5672 rabbitmq:3-management
 docker run -d --name dispatch-flow-api -p 8080:8080 --env-file .env \
+  --link rabbitmq:rabbitmq \
   -v "$(pwd)/tmp/efs-docker:/app/efs" \
   -e SPRING_PROFILES_ACTIVE=prod \
   -e TNS_ADMIN=/app/wallet \
   -e EFS_BASE_PATH=/app/efs \
+  -e SPRING_RABBITMQ_HOST=rabbitmq \
   dispatch-flow-api:local
 
 curl http://localhost:8080/actuator/health

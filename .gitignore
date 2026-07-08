@@ -40,10 +40,7 @@ tmp/
 !.env.example
 
 Wallet_DISPATCHFLOWDB.zip
-Wallet_DISPATCHFLOWDB/ewallet.pem
-Wallet_DISPATCHFLOWDB/ewallet.p12
-Wallet_DISPATCHFLOWDB/cwallet.sso
-Wallet_DISPATCHFLOWDB/keystore.jks
-Wallet_DISPATCHFLOWDB/truststore.jks
+Wallet_DISPATCHFLOWDB/
+wallet_base64.txt
 wallet/
 wallet.zip

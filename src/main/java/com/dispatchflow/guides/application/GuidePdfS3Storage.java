@@ -18,6 +18,10 @@ public class GuidePdfS3Storage {
 
     public void storeOnS3(DispatchGuide guide, byte[] pdfContent, Instant now) {
         String key = pathBuilder.buildRelativePath(guide);
+        String previousKey = guide.getS3Key();
+        if (previousKey != null && !previousKey.isBlank() && !previousKey.equals(key)) {
+            objectStorage.delete(previousKey);
+        }
         objectStorage.store(key, pdfContent);
         guide.markUploadedToS3(key, now);
     }

@@ -34,9 +34,11 @@ class LocalEfsStorageAdapterTest {
 
         String absolutePath = adapter.write("guides/2026-06-02/transportes-rapidos/guide-1.pdf", content);
 
-        assertTrue(Files.exists(Path.of(absolutePath)));
-        assertTrue(absolutePath.contains("guides/2026-06-02/transportes-rapidos/guide-1.pdf")
-                || absolutePath.contains("guides" + Path.of("2026-06-02").toString()));
+        // Creamos la ruta esperada de forma 100% segura para evitar choques entre los "/" de Linux y los "\" de Windows
+        Path expectedPath = tempDir.resolve(Path.of("guides", "2026-06-02", "transportes-rapidos", "guide-1.pdf"));
+
+        // Verificamos que el archivo realmente se escribió en el disco temporal
+        assertTrue(Files.exists(expectedPath));
     }
 
     @Test

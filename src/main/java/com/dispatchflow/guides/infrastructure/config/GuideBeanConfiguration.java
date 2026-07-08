@@ -18,6 +18,7 @@ import com.dispatchflow.guides.domain.services.GuidePdfPathBuilder;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import com.dispatchflow.guides.infrastructure.adapters.RabbitMQGuidePublisher;
 
 import java.time.Clock;
 
@@ -61,9 +62,15 @@ public class GuideBeanConfiguration {
             GuideNumberGenerator guideNumberGenerator,
             GuidePdfEfsStorage guidePdfEfsStorage,
             GuidePdfS3Storage guidePdfS3Storage,
+            RabbitMQGuidePublisher rabbitMQGuidePublisher,
             Clock clock) {
         return new CreateGuideUseCase(
-                guideRepository, guideNumberGenerator, guidePdfEfsStorage, guidePdfS3Storage, clock);
+                guideRepository, 
+                guideNumberGenerator, 
+                guidePdfEfsStorage, 
+                guidePdfS3Storage,
+                rabbitMQGuidePublisher,
+                clock);
     }
 
     @Bean

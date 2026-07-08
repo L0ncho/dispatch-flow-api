@@ -2,6 +2,7 @@ package com.dispatchflow.guides.infrastructure.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -12,6 +13,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
+@Profile("prod")
 public class SecurityConfig {
 
     @Bean
@@ -39,13 +41,10 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Este conversor extrae el custom claim de Azure AD B2C y lo convierte en un Rol de Spring Security
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        
-        // Aquí defines el nombre exacto del atributo que crearás en Azure (ej. extension_Rol) ELIMINAR COMENTARIO
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("extension_Rol"); 
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
         grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
 
         JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();

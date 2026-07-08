@@ -1,13 +1,13 @@
 # dispatch-flow-api
 
-API para gestión de guías de despacho con arquitectura Cloud Native. Incluye generación automática de PDF, persistencia en Oracle ATP, almacenamiento definitivo en AWS S3, y protección perimetral mediante AWS API Gateway y Azure AD B2C.
+API Gateway (AWS):** Cada endpoint de la API está configurado de manera explícita con su método HTTP correspondiente. Se eliminó el uso de la integración Proxy (`ANY /{proxy+}`) para garantizar un control de acceso granular y cumplir con las mejores prácticas de arquitectura. Ninguna petición anónima llega al servidor EC2.
 
 ## 🛡️ Seguridad e Identidad (IDaaS)
 
 El sistema delega la identidad y la exposición a servicios administrados en la nube:
 - **API Gateway (AWS):** Todos los endpoints están ocultos detrás de una integración Proxy (`ANY /{proxy+}`). Ninguna petición anónima llega al servidor EC2.
 - **Azure AD B2C:** Actúa como proveedor de identidad. El API Gateway valida la firma del token JWT antes de permitir el enrutamiento.
-- **Roles (RBAC):** El backend valida el claim `extension_Rol` inyectado por Azure:
+- **Roles (RBAC):** El backend valida el claim `roles` (App Roles de Azure) con prefijo `ROLE_`:
   - `ROLE_DESCARGA`: Permite únicamente el endpoint de descarga de PDFs.
   - `ROLE_ADMIN`: Acceso total al resto de operaciones (CRUD y búsqueda).
 
@@ -15,9 +15,9 @@ El sistema delega la identidad y la exposición a servicios administrados en la 
 
 - Java 21
 - Maven 3.9+ (incluido vía `./mvnw`)
-- Docker (para desarrollo local con LocalStack)
+- Docker (para desarrollo local con LocalStack y RabbitMQ)
 - Wallet Oracle Autonomous DB (solo para `./run-prod` o Docker prod)
-- Tenant de Azure AD B2C configurado con el atributo `Rol` (para despliegue en la nube)
+- Tenant de Azure AD B2C con App Roles `DESCARGA` y `ADMIN` asignados a la aplicación (para despliegue en la nube)
 
 ## Ejecutar en local (H2 + LocalStack)
 
@@ -26,7 +26,7 @@ chmod +x run-local run-prod run-docker scripts/init-localstack.sh scripts/setup-
 ./run-local
 ```
 
-Este script levanta LocalStack, crea el bucket `dispatch-flow-local` y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible).
+Este script levanta LocalStack, crea el bucket `dispatch-flow-local`, inicia RabbitMQ y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible). En local **no se requiere token JWT**; Spring Security está deshabilitado para facilitar el desarrollo.
 
 ## Oracle en producción (`./run-prod`)
 
@@ -44,18 +44,18 @@ cp .env.example .env
 ./run-prod
 ```
 
-El script descomprime el wallet en `Wallet_DISPATCHFLOWDB/`, carga `.env`, configura `TNS_ADMIN` y conecta a Oracle ATP vía alias `dispatchflowdb_high`.
+El script descomprime el wallet en `Wallet_DISPATCHFLOWDB/` (carpeta local, no versionada), carga `.env`, configura `TNS_ADMIN` y conecta a Oracle ATP. El alias TNS depende de tu wallet; el default es `dispatchflowdb_high`.
 
 | Variable | Descripción |
 |----------|-------------|
-| `SPRING_DATASOURCE_URL` | Default: `jdbc:oracle:thin:@dispatchflowdb_high` |
+| `SPRING_DATASOURCE_URL` | Default: `jdbc:oracle:thin:@dispatchflowdb_high` (ajustar al alias de tu wallet) |
 | `SPRING_DATASOURCE_USERNAME` | Usuario Oracle |
 | `SPRING_DATASOURCE_PASSWORD` | Contraseña Oracle |
 | `TNS_ADMIN` | Default: `./Wallet_DISPATCHFLOWDB` |
 | `AWS_REGION` | Región S3 |
 | `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
 
-Archivos sensibles del wallet están en `.gitignore` (`ewallet.*`, `cwallet.sso`, `*.jks`). No versionar `.env`.
+Archivos del wallet no se versionan (carpeta `Wallet_DISPATCHFLOWDB/` en `.gitignore`). Cada desarrollador provee su propio zip local y secret `ORACLE_WALLET_BASE64` en CI. No versionar `.env`.
 
 Despliegue automatizado en EC2: [docs/guia-despliegue-ec2.md](docs/guia-despliegue-ec2.md).
 
@@ -90,8 +90,8 @@ Despliegue completo vía Docker Hub: [docs/guia-despliegue-ec2.md](docs/guia-des
 ```bash
 ./mvnw test
 ```
+Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=false`) y la autoconfiguración de RabbitMQ se deshabilita durante la ejecución para garantizar que el entorno CI sea rápido y estable sin depender de brokers externos.
 
-Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=false`) para CI estable.
 
 ## Almacenamiento EFS (local / producción)
 
@@ -106,6 +106,7 @@ Al **crear** o **actualizar** una guía, el sistema:
 2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
 3. Sube el mismo PDF a S3 con la misma clave relativa
 4. Persiste `efsPath`, `s3Key` y el status `UPLOADED_TO_S3`
+5. Publica un evento asíncrono en **RabbitMQ**
 
 Si falla EFS o S3 durante POST/PUT, la operación completa falla.
 
@@ -162,17 +163,54 @@ Con la aplicación en ejecución:
 
 Todas las peticiones en producción deben incluir el header `Authorization: Bearer <Token>`.
 
-| Método | Ruta | Descripción | Rol Requerido |
-|--------|------|-------------|---------------|
-| POST | `/api/guides` | Crear guía, PDF en EFS y S3 | `ROLE_ADMIN` |
+En **producción** (perfil `prod`) todos los endpoints requieren `Authorization: Bearer <Token>` excepto `/actuator/health`. En **local** (perfil `local`) los endpoints son accesibles sin autenticación.
+
+| Método | Ruta | Descripción | Rol Requerido (prod) |
+|--------|------|-------------|----------------------|
+| POST | `/api/guides` | Crear guía, PDF en EFS/S3 y notificar a RabbitMQ | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}` | Obtener por ID | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) | `ROLE_DESCARGA` o `ADMIN` |
 | GET | `/api/guides` | Listar guías activas | `ROLE_ADMIN` |
 | PUT | `/api/guides/{id}` | Actualizar guía y regenerar PDF + S3 | `ROLE_ADMIN` |
 | DELETE | `/api/guides/{id}` | Borrar objeto S3 + eliminación lógica | `ROLE_ADMIN` |
 | GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha | `ROLE_ADMIN` |
+| GET | `/api/queue/consume` | Consumir mensajes de la cola RabbitMQ | `ROLE_ADMIN` |
 
 La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
+
+### Flujo CI/CD (GitHub Actions)
+
+El proyecto cuenta con integración y despliegue continuo configurado para AWS EC2.
+
+|Evento              |Accion del pipeline|
+|--------------------|-------------------|
+|Pull Request > Main | Solo `./mvnw test`  |
+|Push > Main         | Tests, build, push a Docker Hub, deploy automatizado por ssh|
+
+
+## Ejemplo Postman: crear guía (Local)
+
+**POST** `http://localhost:8080/api/guides`
+
+```json
+{
+  "carrierName": "Transportes Rápidos",
+  "recipientName": "María González",
+  "originAddress": "Av. Providencia 1234, Santiago",
+  "destinationAddress": "Calle Huérfanos 567, Santiago",
+  "description": "Electrónicos",
+  "dispatchDate": "2026-06-02",
+  "ownerEmail": "responsable@empresa.cl"
+}
+```
+
+Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`.
+
+Verificar EFS: `./tmp/efs/guides/2026-06-02/transportes-rapidos/`
+
+Verificar S3: `awslocal s3 ls s3://dispatch-flow-local/guides/2026-06-02/transportes-rapidos/`
+
+Colección Postman: [`postman/dispatch-flow-api.postman_collection.json`](postman/dispatch-flow-api.postman_collection.json)
 
 ## Ejemplo Postman: crear guía (Producción)
 
@@ -193,14 +231,25 @@ La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparec
 
 Respuesta esperada: `201 Created` con `id`, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`.
 
-## Ejemplo Postman: descargar PDF
+## Ejemplo Postman: descargar PDF (Local)
 
 **GET** `https://<TU-API-GATEWAY-URL>/api/guides/{id}/download`  
 **Headers:** `Authorization: Bearer <TOKEN_DESCARGA>`
 
 Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
 
-## Ejemplo Postman: búsqueda
+## Ejemplo Postman: descargar PDF (Producción)
+
+**GET** `https://<TU-API-GATEWAY-URL>/api/guides/{id}/download`  
+**Headers:** `Authorization: Bearer <TOKEN_DESCARGA>`
+
+Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id}.pdf`.
+
+## Ejemplo Postman: búsqueda (Local)
+
+**GET** `http://localhost:8080/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`
+
+## Ejemplo Postman: búsqueda (Producción)
 
 **GET** `https://<TU-API-GATEWAY-URL>/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`  
 **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
@@ -211,11 +260,13 @@ El proyecto sigue arquitectura hexagonal (inside-out):
 
 - **Dominio**: entidades, value objects, `GuidePdfPathBuilder`, repositorio
 - **Aplicación**: casos de uso, `GuidePdfEfsStorage`, `GuidePdfS3Storage`, puertos PDF/EFS/S3
-- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT)
+- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT en perfil `prod`), y adaptador de mensajería con **RabbitMQ**.
 
-## Health check (Público)
+## Health check (Público en prod)
 
 ```bash
+curl https://<TU-API-GATEWAY-URL>/actuator/health
+# o localmente: curl http://localhost:8080/actuator/health
 curl https://<TU-API-GATEWAY-URL>/actuator/health
 # o localmente: curl http://localhost:8080/actuator/health
 ```

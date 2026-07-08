@@ -2,13 +2,137 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "dispatch-flow-api",
-    "description": "Colección para probar el CRUD de guías de despacho con PDF automático en EFS y subida a S3.\n\nRequisitos:\n1. Ejecutar la app: `./run-local` (LocalStack + S3) o `./mvnw spring-boot:run` con S3 deshabilitado\n2. Base URL por defecto: `http://localhost:8080`\n\nFlujo sugerido:\n1. Create Guide (EFS + S3, guarda `guideId`)\n2. Download Guide PDF\n3. Get Guide by ID\n4. List Guides\n5. Search Guides\n6. Update Guide (regenera EFS + S3)\n7. Delete Guide (borra objeto S3)",
+    "description": "Colección para probar el CRUD de guías de despacho con PDF automático en EFS y subida a S3, con RBAC por usuario contra Azure AD B2C.\n\nRequisitos:\n1. Ejecutar la app: `./run-local` (LocalStack + S3, sin token) o desplegada en prod detrás de API Gateway + Azure AD B2C (con token).\n2. Base URL por defecto: `http://localhost:8080`. En prod usar la URL del API Gateway (ej. `https://<api-id>.execute-api.<region>.amazonaws.com/dev`).\n\nAutenticación por USUARIO (demo de roles):\n- La colección usa OAuth 2.0 grant `Authorization Code`. El usuario inicia sesión en el navegador y su token trae el claim `roles` según el App Role que tenga asignado.\n- Dos usuarios para la demo: `admin@...` (rol ADMIN, CRUD completo) y `descarga@...` (rol DESCARGA, solo descargar).\n- Variable obligatoria: `clientSecret`. Variables `adminUserId` y `descargaUserId` con el Object ID de cada usuario (solo para los pasos de Graph).\n- En el portal de Azure, la app necesita el Redirect URI `https://oauth.pstmn.io/v1/callback` (plataforma Web) y los App Roles ADMIN/DESCARGA con `allowedMemberTypes: [\"User\"]`.\n- En local la seguridad está deshabilitada, por lo que el token es opcional.\n\nDemo de los 2 usuarios:\n- Usuario ADMIN: en `Authorization` de la COLECCIÓN pulsa `Get New Access Token`, inicia sesión como `admin@...`, `Use Token`, y ejecuta la carpeta `Guides` (todo 200).\n- Usuario DESCARGA: en `Authorization` de la carpeta `Demo · Usuario DESCARGA` pulsa `Get New Access Token`, inicia sesión como `descarga@...`, `Use Token`, y ejecuta sus requests (descarga 200, crear 403).\n\nAsignación de roles a usuarios (una sola vez, carpeta `Azure Setup (Graph)`):\n- Rellena `adminUserId` y `descargaUserId` (Object ID de cada usuario en Azure portal > Users).\n- Ejecuta en orden `1. Get Graph Token` → `2. Get Service Principal ID` → `4. Asignar Rol ADMIN a usuario admin` → `5. Asignar Rol DESCARGA a usuario descarga`.\n- Requiere que la app tenga permisos Graph `AppRoleAssignment.ReadWrite.All` con admin consent (ya configurado).\n- Los pasos `3` y `3b` asignan roles a la propia app (flujo Client Credentials) y son opcionales en la demo por usuario.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "tokenName",
+        "value": "Token Usuario ADMIN",
+        "type": "string"
+      },
+      {
+        "key": "grant_type",
+        "value": "authorization_code",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "{{authorizeUrl}}",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "{{tokenUrl}}",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{clientId}}",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "{{clientSecret}}",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "{{userScope}}",
+        "type": "string"
+      },
+      {
+        "key": "redirect_uri",
+        "value": "{{redirectUri}}",
+        "type": "string"
+      },
+      {
+        "key": "state",
+        "value": "admin-demo",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
   },
   "variable": [
     {
       "key": "baseUrl",
       "value": "http://localhost:8080"
+    },
+    {
+      "key": "tokenUrl",
+      "value": "https://login.microsoftonline.com/dispatchflowapi.onmicrosoft.com/oauth2/v2.0/token"
+    },
+    {
+      "key": "clientId",
+      "value": "908ea072-acdf-4c75-a62d-1a21441d86b7"
+    },
+    {
+      "key": "clientSecret",
+      "value": ""
+    },
+    {
+      "key": "scope",
+      "value": "https://dispatchflowapi.onmicrosoft.com/908ea072-acdf-4c75-a62d-1a21441d86b7/.default"
+    },
+    {
+      "key": "authorizeUrl",
+      "value": "https://login.microsoftonline.com/dispatchflowapi.onmicrosoft.com/oauth2/v2.0/authorize"
+    },
+    {
+      "key": "redirectUri",
+      "value": "https://oauth.pstmn.io/v1/callback"
+    },
+    {
+      "key": "userScope",
+      "value": "908ea072-acdf-4c75-a62d-1a21441d86b7/.default openid"
+    },
+    {
+      "key": "adminUpn",
+      "value": "admin@dispatchflowapi.onmicrosoft.com"
+    },
+    {
+      "key": "descargaUpn",
+      "value": "descarga@dispatchflowapi.onmicrosoft.com"
+    },
+    {
+      "key": "adminUserId",
+      "value": ""
+    },
+    {
+      "key": "descargaUserId",
+      "value": ""
+    },
+    {
+      "key": "graphScope",
+      "value": "https://graph.microsoft.com/.default"
+    },
+    {
+      "key": "graphToken",
+      "value": ""
+    },
+    {
+      "key": "spId",
+      "value": ""
+    },
+    {
+      "key": "appRoleIdAdmin",
+      "value": "a1111111-1111-1111-1111-111111111111"
+    },
+    {
+      "key": "appRoleIdDescarga",
+      "value": "b2222222-2222-2222-2222-222222222222"
     },
     {
       "key": "guideId",
@@ -24,6 +148,305 @@
     }
   ],
   "item": [
+    {
+      "name": "Azure Setup (Graph)",
+      "description": "Asignación de App Roles al service principal vía Microsoft Graph (Client Credentials). Ejecutar UNA sola vez, en orden:\n1. Get Graph Token\n2. Get Service Principal ID\n3. Assign Role ADMIN (y/o Assign Role DESCARGA)\n\nRequiere que la app tenga los permisos Graph `Application.Read.All` y `AppRoleAssignment.ReadWrite.All` con admin consent. No usa usuario: se autentica la app con su client secret.",
+      "item": [
+        {
+          "name": "1. Get Graph Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Token obtenido y guardado en graphToken', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('graphToken', json.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{clientSecret}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{graphScope}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{tokenUrl}}",
+              "host": ["{{tokenUrl}}"]
+            },
+            "description": "Obtiene un token para Microsoft Graph (scope `.default`). Guarda el token en la variable `graphToken`."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Service Principal ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('spId obtenido y guardado', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.id).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('spId', json.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{graphToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://graph.microsoft.com/v1.0/servicePrincipals(appId='{{clientId}}')",
+              "protocol": "https",
+              "host": ["graph", "microsoft", "com"],
+              "path": ["v1.0", "servicePrincipals(appId='{{clientId}}')"]
+            },
+            "description": "Obtiene el service principal de la app por su appId y guarda su `id` en la variable `spId`."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Assign Role ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{graphToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"principalId\": \"{{spId}}\",\n  \"resourceId\": \"{{spId}}\",\n  \"appRoleId\": \"{{appRoleIdAdmin}}\"\n}"
+            },
+            "url": {
+              "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
+              "protocol": "https",
+              "host": ["graph", "microsoft", "com"],
+              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+            },
+            "description": "Asigna el App Role ADMIN al propio service principal. El próximo token de la API incluirá `roles: [\"ADMIN\"]`."
+          },
+          "response": []
+        },
+        {
+          "name": "3b. Assign Role DESCARGA (opcional)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{graphToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"principalId\": \"{{spId}}\",\n  \"resourceId\": \"{{spId}}\",\n  \"appRoleId\": \"{{appRoleIdDescarga}}\"\n}"
+            },
+            "url": {
+              "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
+              "protocol": "https",
+              "host": ["graph", "microsoft", "com"],
+              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+            },
+            "description": "Opcional. Asigna también el App Role DESCARGA al mismo service principal. Útil solo si quieres que esta app tenga ambos roles; para demostrar permisos separados conviene una segunda app registration."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Asignar Rol ADMIN a usuario admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{graphToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"principalId\": \"{{adminUserId}}\",\n  \"resourceId\": \"{{spId}}\",\n  \"appRoleId\": \"{{appRoleIdAdmin}}\"\n}"
+            },
+            "url": {
+              "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
+              "protocol": "https",
+              "host": ["graph", "microsoft", "com"],
+              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+            },
+            "description": "Asigna el App Role ADMIN al USUARIO admin (`principalId` = `adminUserId`). Requisito previo: el App Role ADMIN debe permitir `allowedMemberTypes: [\"User\"]` y la variable `adminUserId` debe contener el Object ID del usuario (Azure portal > Users > admin > Object ID). El token de ese usuario incluirá `roles: [\"ADMIN\"]`."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Asignar Rol DESCARGA a usuario descarga",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{graphToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"principalId\": \"{{descargaUserId}}\",\n  \"resourceId\": \"{{spId}}\",\n  \"appRoleId\": \"{{appRoleIdDescarga}}\"\n}"
+            },
+            "url": {
+              "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
+              "protocol": "https",
+              "host": ["graph", "microsoft", "com"],
+              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+            },
+            "description": "Asigna el App Role DESCARGA al USUARIO descarga (`principalId` = `descargaUserId`). Requisito previo: el App Role DESCARGA debe permitir `allowedMemberTypes: [\"User\"]` y la variable `descargaUserId` debe contener el Object ID del usuario. El token de ese usuario incluirá `roles: [\"DESCARGA\"]` (solo podrá usar el endpoint de descarga)."
+          },
+          "response": []
+        }
+      ]
+    },
     {
       "name": "Guides",
       "item": [
@@ -365,6 +788,139 @@
       ]
     },
     {
+      "name": "Demo · Usuario DESCARGA",
+      "description": "Demostración del rol DESCARGA con un usuario distinto.\n\nPasos:\n1. En la pestaña Authorization de ESTA carpeta, pulsa `Get New Access Token` y, en el navegador, inicia sesión con `descarga@dispatchflowapi.onmicrosoft.com`. Pulsa `Use Token`.\n2. `Download Guide PDF` debe responder 200 (rol DESCARGA permite descargar).\n3. `Create Guide` debe responder 403 (rol DESCARGA NO permite crear).\n\nLa carpeta `Guides` usa el token de la colección (usuario admin) y permite el CRUD completo. Así se contrastan los dos roles con dos usuarios.\n\nNota: requiere haber creado guías antes (con el usuario admin) para tener un `guideId` válido al descargar.",
+      "auth": {
+        "type": "oauth2",
+        "oauth2": [
+          {
+            "key": "tokenName",
+            "value": "Token Usuario DESCARGA",
+            "type": "string"
+          },
+          {
+            "key": "grant_type",
+            "value": "authorization_code",
+            "type": "string"
+          },
+          {
+            "key": "authUrl",
+            "value": "{{authorizeUrl}}",
+            "type": "string"
+          },
+          {
+            "key": "accessTokenUrl",
+            "value": "{{tokenUrl}}",
+            "type": "string"
+          },
+          {
+            "key": "clientId",
+            "value": "{{clientId}}",
+            "type": "string"
+          },
+          {
+            "key": "clientSecret",
+            "value": "{{clientSecret}}",
+            "type": "string"
+          },
+          {
+            "key": "scope",
+            "value": "{{userScope}}",
+            "type": "string"
+          },
+          {
+            "key": "redirect_uri",
+            "value": "{{redirectUri}}",
+            "type": "string"
+          },
+          {
+            "key": "state",
+            "value": "descarga-demo",
+            "type": "string"
+          },
+          {
+            "key": "client_authentication",
+            "value": "body",
+            "type": "string"
+          },
+          {
+            "key": "addTokenTo",
+            "value": "header",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Download Guide PDF (DESCARGA → 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Content-Type is application/pdf', function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/guides/{{guideId}}/download",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "guides", "{{guideId}}", "download"]
+            },
+            "description": "Con el token del usuario `descarga` (rol DESCARGA), la descarga está permitida. Requiere un `guideId` creado previamente por el usuario admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Guide (DESCARGA → 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carrierName\": \"Transportes Rápidos\",\n  \"recipientName\": \"María González\",\n  \"originAddress\": \"Av. Providencia 1234, Santiago\",\n  \"destinationAddress\": \"Calle Huérfanos 567, Santiago\",\n  \"description\": \"Electrónicos\",\n  \"dispatchDate\": \"2026-06-02\",\n  \"ownerEmail\": \"responsable@empresa.cl\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/guides",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "guides"]
+            },
+            "description": "Con el token del usuario `descarga` (rol DESCARGA), crear una guía está denegado: el backend responde 403 porque ese endpoint exige ROLE_ADMIN."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Actuator",
       "item": [
         {
@@ -383,6 +939,9 @@
             }
           ],
           "request": {
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
             "header": [],
             "url": {
@@ -390,7 +949,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["actuator", "health"]
             },
-            "description": "Verifica que la aplicación está en ejecución."
+            "description": "Verifica que la aplicación está en ejecución. Endpoint público (sin token)."
           },
           "response": []
         }

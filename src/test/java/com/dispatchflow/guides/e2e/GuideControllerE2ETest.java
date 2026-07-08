@@ -1,6 +1,7 @@
 package com.dispatchflow.guides.e2e;
 
 import com.dispatchflow.dispatch_flow_api.DispatchFlowApiApplication;
+import com.dispatchflow.guides.infrastructure.adapters.RabbitMQGuidePublisher;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +39,10 @@ class GuideControllerE2ETest {
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
+
+    
+    @MockitoBean
+    private RabbitMQGuidePublisher rabbitMQGuidePublisher;
 
     @DynamicPropertySource
     static void configureTestStorage(DynamicPropertyRegistry registry) throws Exception {
