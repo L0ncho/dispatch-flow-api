@@ -7,4 +7,4 @@ docker compose up -d
 ./scripts/init-localstack.sh
 
 export SPRING_PROFILES_ACTIVE=local
-./mvnw -pl producer spring-boot:run
+./mvnw -pl dispatch-flow-consumer spring-boot:run

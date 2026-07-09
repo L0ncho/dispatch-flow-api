@@ -49,6 +49,8 @@ jobs:
         run: |
           docker build -t "${DOCKERHUB_USERNAME}/dispatch-flow-api:latest" .
           docker push "${DOCKERHUB_USERNAME}/dispatch-flow-api:latest"
+          docker build -f dispatch-flow-consumer/Dockerfile -t "${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest" .
+          docker push "${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest"
 
       - name: Deploy to EC2
         env:
@@ -102,4 +104,25 @@ jobs:
                -e RABBITMQ_PORT='${RABBITMQ_PORT}' \
                -e RABBITMQ_USER='${RABBITMQ_USER}' \
                -e RABBITMQ_PASS='${RABBITMQ_PASS}' \
-               ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest"
+               ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest && \
+             docker pull ${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest && \
+             docker stop dispatch-flow-consumer 2>/dev/null || true && \
+             docker rm dispatch-flow-consumer 2>/dev/null || true && \
+             docker run -d --name dispatch-flow-consumer -p 8081:8081 --network dispatch-net \
+               -v ${EFS_HOST_MOUNT}:/app/efs \
+               -e SPRING_PROFILES_ACTIVE=prod \
+               -e SPRING_DATASOURCE_URL='${DATASOURCE_URL}' \
+               -e SPRING_DATASOURCE_USERNAME='${SPRING_DATASOURCE_USERNAME}' \
+               -e SPRING_DATASOURCE_PASSWORD='${SPRING_DATASOURCE_PASSWORD}' \
+               -e TNS_ADMIN=/app/wallet \
+               -e AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}' \
+               -e AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}' \
+               -e AWS_SESSION_TOKEN='${AWS_SESSION_TOKEN}' \
+               -e AWS_REGION='${AWS_REGION}' \
+               -e S3_BUCKET_NAME='${S3_BUCKET_NAME}' \
+               -e EFS_BASE_PATH=/app/efs \
+               -e RABBITMQ_HOST=rabbitmq-dispatch \
+               -e RABBITMQ_PORT='${RABBITMQ_PORT}' \
+               -e RABBITMQ_USER='${RABBITMQ_USER}' \
+               -e RABBITMQ_PASS='${RABBITMQ_PASS}' \
+               ${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest"

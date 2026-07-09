@@ -11,6 +11,85 @@ El sistema delega la identidad y la exposición a servicios administrados en la 
   - `ROLE_DESCARGA`: Permite únicamente el endpoint de descarga de PDFs.
   - `ROLE_ADMIN`: Acceso total al resto de operaciones (CRUD y búsqueda).
 
+## Arquitectura del sistema
+
+El sistema se divide en **dos microservicios Spring Boot** conectados por **RabbitMQ**. El productor expone la API REST; el consumidor procesa las guías en segundo plano.
+
+Documentación detallada: **[docs/arquitectura.md](docs/arquitectura.md)**
+
+### Componentes y conexiones
+
+```mermaid
+flowchart TB
+    subgraph clients [Entrada]
+        Client[Cliente / Postman]
+        ApiGw[API Gateway AWS]
+    end
+
+    subgraph messaging [RabbitMQ Docker]
+        Exchange[dispatch.exchange]
+        Q1["Cola 1: guide.created.queue"]
+        DLQ["Cola 2 / DLQ: guide.created.dlq"]
+    end
+
+    subgraph producerMS ["MS Productor — producer :8080"]
+        GuideCtrl[GuideController]
+        AcceptUC[AcceptGuideRequestUseCase]
+        Publisher[RabbitMQGuidePublisher]
+        CrudUC[CRUD legacy GET PUT DELETE]
+    end
+
+    subgraph consumerMS ["MS Consumidor — dispatch-flow-consumer :8081"]
+        Listener["@RabbitListener"]
+        ProcessUC[ProcessGuideMessageUseCase]
+    end
+
+    subgraph data [Almacenamiento]
+        OracleCrud[("dispatch_guides")]
+        OracleAsync[("async_dispatch_guides")]
+        S3[(S3 / LocalStack)]
+        EFS[(EFS)]
+    end
+
+    Client --> ApiGw --> GuideCtrl
+    GuideCtrl -->|POST async| AcceptUC --> Publisher --> Exchange --> Q1
+    Q1 --> Listener --> ProcessUC
+    ProcessUC --> S3
+    ProcessUC --> EFS
+    ProcessUC --> OracleAsync
+    GuideCtrl --> CrudUC --> OracleCrud
+    CrudUC --> S3
+    Q1 -.->|error| DLQ
+```
+
+### Flujo de creación asíncrona
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant P as MS Productor :8080
+    participant RMQ as RabbitMQ
+    participant N as MS Consumidor :8081
+    participant S3 as S3
+    participant DB as Oracle
+
+    C->>P: POST /api/guides
+    P->>RMQ: GuideCreationMessage
+    P-->>C: 202 ACCEPTED trackingId
+    RMQ->>N: @RabbitListener
+    N->>N: PDF + validación
+    N->>S3: upload
+    N->>DB: async_dispatch_guides
+```
+
+### Módulos Maven
+
+| Módulo | Puerto | Responsabilidad |
+|--------|--------|-----------------|
+| `producer` (`dispatch-flow-api`) | 8080 | API, publicar mensajes, CRUD `dispatch_guides` |
+| `dispatch-flow-consumer` | 8081 | Consumir cola, PDF, S3, `async_dispatch_guides` |
+| `guides-shared` | — | Dominio y contratos de mensajería compartidos |
+
 ## Requisitos
 
 - Java 21
@@ -19,14 +98,23 @@ El sistema delega la identidad y la exposición a servicios administrados en la 
 - Wallet Oracle Autonomous DB (solo para `./run-prod` o Docker prod)
 - Tenant de Azure AD B2C con App Roles `DESCARGA` y `ADMIN` asignados a la aplicación (para despliegue en la nube)
 
-## Ejecutar en local (H2 + LocalStack)
+## Ejecutar en local (H2 + LocalStack + RabbitMQ)
 
 ```bash
-chmod +x run-local run-prod run-docker scripts/init-localstack.sh scripts/setup-oracle-wallet.sh scripts/setup-efs-mount.sh scripts/prepare-wallet-for-docker.sh
+chmod +x run-local run-consumer run-prod run-docker scripts/init-localstack.sh scripts/setup-oracle-wallet.sh scripts/setup-efs-mount.sh scripts/prepare-wallet-for-docker.sh
 ./run-local
 ```
 
-Este script levanta LocalStack, crea el bucket `dispatch-flow-local`, inicia RabbitMQ y arranca la API con perfil `local` usando **H2 in-memory** (consola H2 disponible). En local **no se requiere token JWT**; Spring Security está deshabilitado para facilitar el desarrollo.
+En otra terminal, con RabbitMQ activo (`docker compose up -d`):
+
+```bash
+./run-consumer
+```
+
+- **MS Productor** (`run-local`): puerto **8080** — recibe `POST /api/guides` y publica en RabbitMQ.
+- **MS Consumidor** (`run-consumer`): puerto **8081** — escucha la cola con `@RabbitListener`, genera PDF, sube a S3 y persiste en `async_dispatch_guides`.
+
+Este script levanta LocalStack, crea el bucket `dispatch-flow-local`, inicia RabbitMQ y arranca el productor con perfil `local` usando **H2 in-memory**. En local **no se requiere token JWT**.
 
 ## Oracle en producción (`./run-prod`)
 
@@ -100,15 +188,26 @@ Los tests E2E usan almacenamiento S3 en memoria (`dispatch.storage.s3.enabled=fa
 | `EFS_BASE_PATH` | `./tmp/efs` | `/app/efs` (dentro del contenedor) |
 | Mount en host | No aplica | `/mnt/dispatch-flow-efs` (AWS EFS) |
 
-Al **crear** o **actualizar** una guía, el sistema:
+## Arquitectura asíncrona (RabbitMQ)
 
-1. Genera un PDF con Apache PDFBox
-2. Lo guarda temporalmente en `{EFS_BASE_PATH}/guides/{fecha}/{transportista-slug}/guide-{id}.pdf`
-3. Sube el mismo PDF a S3 con la misma clave relativa
-4. Persiste `efsPath`, `s3Key` y el status `UPLOADED_TO_S3`
-5. Publica un evento asíncrono en **RabbitMQ**
+Ver diagramas completos en **[docs/arquitectura.md](docs/arquitectura.md)**.
 
-Si falla EFS o S3 durante POST/PUT, la operación completa falla.
+RabbitMQ local: `docker compose up -d` — puertos **5672** (AMQP) y **15672** (consola).
+
+| Variable | Local (default) | Producción |
+|----------|-----------------|------------|
+| `RABBITMQ_HOST` | `localhost` | `rabbitmq-dispatch` (EC2) |
+| `RABBITMQ_PORT` | `5672` | `5672` |
+| `RABBITMQ_USER` | `guest` | secret CI |
+| `RABBITMQ_PASS` | `guest` | secret CI |
+
+Al **crear** una guía vía `POST /api/guides` (flujo asíncrono):
+
+1. El productor valida la solicitud y publica `GuideCreationMessage` en RabbitMQ.
+2. Responde `202 Accepted` con `{ "status": "ACCEPTED", "trackingId": "..." }`.
+3. El consumidor procesa el mensaje: genera PDF, sube a S3 y guarda en `async_dispatch_guides`.
+
+Al **actualizar** una guía existente (`PUT /api/guides/{id}`), el productor sigue el flujo síncrono sobre `dispatch_guides` (PDF + EFS + S3).
 
 ### EFS en EC2 (deploy con Docker Hub)
 
@@ -167,16 +266,15 @@ En **producción** (perfil `prod`) todos los endpoints requieren `Authorization:
 
 | Método | Ruta | Descripción | Rol Requerido (prod) |
 |--------|------|-------------|----------------------|
-| POST | `/api/guides` | Crear guía, PDF en EFS/S3 y notificar a RabbitMQ | `ROLE_ADMIN` |
+| POST | `/api/guides` | Aceptar solicitud y publicar en RabbitMQ (procesamiento asíncrono) | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}` | Obtener por ID | `ROLE_ADMIN` |
 | GET | `/api/guides/{id}/download` | Descargar PDF (S3 preferido) | `ROLE_DESCARGA` o `ADMIN` |
 | GET | `/api/guides` | Listar guías activas | `ROLE_ADMIN` |
 | PUT | `/api/guides/{id}` | Actualizar guía y regenerar PDF + S3 | `ROLE_ADMIN` |
 | DELETE | `/api/guides/{id}` | Borrar objeto S3 + eliminación lógica | `ROLE_ADMIN` |
 | GET | `/api/guides/search?carrierName=&date=` | Buscar por transportista y fecha | `ROLE_ADMIN` |
-| GET | `/api/queue/consume` | Consumir mensajes de la cola RabbitMQ | `ROLE_ADMIN` |
 
-La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas.
+La eliminación es lógica (`status = DELETED`); las guías eliminadas no aparecen en listados ni búsquedas. Las guías creadas por el flujo asíncrono se persisten en `async_dispatch_guides` (consumidor) y no aparecen en los listados del productor hasta una integración futura.
 
 ### Flujo CI/CD (GitHub Actions)
 
@@ -254,13 +352,21 @@ Respuesta: `200 OK`, `Content-Type: application/pdf`, archivo adjunto `guide-{id
 **GET** `https://<TU-API-GATEWAY-URL>/api/guides/search?carrierName=Transportes%20Rápidos&date=2026-06-02`  
 **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
 
-## Arquitectura
+## Arquitectura hexagonal y módulos
 
-El proyecto sigue arquitectura hexagonal (inside-out):
+El proyecto es un **monorepo Maven multi-módulo** con arquitectura hexagonal (inside-out) en cada microservicio:
 
-- **Dominio**: entidades, value objects, `GuidePdfPathBuilder`, repositorio
-- **Aplicación**: casos de uso, `GuidePdfEfsStorage`, `GuidePdfS3Storage`, puertos PDF/EFS/S3
-- **Infraestructura**: JPA (H2 local / Oracle prod), PDFBox, `LocalEfsStorageAdapter`, `S3ObjectStorageAdapter`, controladores REST, Spring Security (JWT en perfil `prod`), y adaptador de mensajería con **RabbitMQ**.
+- **`guides-shared`**: dominio, value objects, `GuideCreationMessage`, `RabbitMqTopology`
+- **`producer`**: casos de uso del productor, puerto `GuideMessagePublisher`, adaptadores JPA/S3/RabbitMQ, controladores REST
+- **`dispatch-flow-consumer`**: `ProcessGuideMessageUseCase`, `@RabbitListener`, persistencia `async_dispatch_guides`
+
+Capas por módulo:
+
+- **Dominio** (`guides-shared`): entidades, value objects, reglas de negocio
+- **Aplicación**: casos de uso, puertos PDF/EFS/S3/mensajería
+- **Infraestructura**: JPA, PDFBox, S3, RabbitMQ, Spring Security (JWT en `prod`)
+
+Diagrama de componentes y flujos: **[docs/arquitectura.md](docs/arquitectura.md)**
 
 ## Health check (Público en prod)
 
