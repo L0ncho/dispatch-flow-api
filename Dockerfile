@@ -5,6 +5,7 @@ COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY guides-shared ./guides-shared
 COPY producer ./producer
+COPY dispatch-flow-consumer ./dispatch-flow-consumer
 RUN ./mvnw -pl producer -am -DskipTests package
 
 FROM eclipse-temurin:21-jre
