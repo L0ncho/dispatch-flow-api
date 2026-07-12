@@ -19,26 +19,35 @@ En EC2, **AWS EFS debe montarse en el host Linux** antes del primer deploy; el c
 
 ## 1. Secrets en GitHub
 
-Configurar en **Settings → Secrets and variables → Actions**:
+Configurar en **Settings → Secrets and variables → Actions** del repositorio que despliega (en un **fork**, usa los secrets del **fork**, no los del upstream).
 
-| Secret | Valor |
-| ------ | ----- |
-| `ORACLE_WALLET_BASE64` | Archivo zip de `Wallet_DISPATCHFLOWDB` codificado en base64 |
-| `SPRING_DATASOURCE_USERNAME` | Usuario Oracle (equivalente a `.env` local) |
-| `SPRING_DATASOURCE_PASSWORD` | Contraseña Oracle (equivalente a `.env` local) |
-| `DOCKERHUB_USERNAME` | Usuario de Docker Hub |
-| `DOCKERHUB_TOKEN` | Access token de Docker Hub (no la contraseña de la cuenta) |
-| `EC2_HOST` | IP pública de la instancia EC2 |
-| `USER_SERVER` | Usuario SSH: `ubuntu` (Ubuntu) o `ec2-user` (Amazon Linux) |
-| `EC2_SSH_KEY` | Contenido del archivo `.pem` (líneas `BEGIN` a `END` inclusive) |
-| `AWS_ACCESS_KEY_ID` | Access key IAM con permisos S3 sobre el bucket |
-| `AWS_SECRET_ACCESS_KEY` | Secret key IAM |
-| `AWS_SESSION_TOKEN` | Credenciales STS temporales; omitir si no aplica |
-| `AWS_REGION` | Región del bucket S3 (ej. `us-east-1`) |
-| `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
-| `AZURE_B2C_ISSUER_URI` | Issuer (`iss`) del tenant Azure AD B2C que emite el JWT |
-| `AZURE_B2C_JWK_SET_URI` | URL del JWKS (claves públicas) del tenant para validar la firma del JWT |
-| `SPRING_DATASOURCE_URL` | Opcional. Por defecto: `jdbc:oracle:thin:@dispatchflowdb_high` (ajustar al alias de tu wallet) |
+Cada fork debe apuntar a **su propia** Autonomous Database Oracle: wallet, usuario, contraseña y `SPRING_DATASOURCE_URL` (alias TNS) no se comparten entre forks y **nunca** se versionan en el repo.
+
+| Secret | Quién lo define | Valor |
+| ------ | --------------- | ----- |
+| `ORACLE_WALLET_BASE64` | Cada fork | Zip del wallet de **su** ATP codificado en base64 |
+| `SPRING_DATASOURCE_USERNAME` | Cada fork | Usuario Oracle (equivalente a `.env` local) |
+| `SPRING_DATASOURCE_PASSWORD` | Cada fork | Contraseña Oracle (equivalente a `.env` local) |
+| `SPRING_DATASOURCE_URL` | Cada fork | Alias TNS de **su** wallet (ej. `jdbc:oracle:thin:@midb_high`). Obligatorio si el alias no es `dispatchflowdb_high` |
+| `DOCKERHUB_USERNAME` | Cada fork | Usuario de Docker Hub |
+| `DOCKERHUB_TOKEN` | Cada fork | Access token de Docker Hub (no la contraseña de la cuenta) |
+| `EC2_HOST` | Cada fork | IP pública de la instancia EC2 |
+| `USER_SERVER` | Cada fork | Usuario SSH: `ubuntu` (Ubuntu) o `ec2-user` (Amazon Linux) |
+| `EC2_SSH_KEY` | Cada fork | Contenido del archivo `.pem` (líneas `BEGIN` a `END` inclusive) |
+| `AWS_ACCESS_KEY_ID` | Cada fork | Access key IAM con permisos S3 sobre el bucket |
+| `AWS_SECRET_ACCESS_KEY` | Cada fork | Secret key IAM |
+| `AWS_SESSION_TOKEN` | Cada fork | Credenciales STS temporales; omitir si no aplica |
+| `AWS_REGION` | Cada fork | Región del bucket S3 (ej. `us-east-1`) |
+| `S3_BUCKET_NAME` | Cada fork | Bucket prod |
+| `AZURE_B2C_ISSUER_URI` | Cada fork | Issuer (`iss`) del tenant Azure AD B2C que emite el JWT |
+| `AZURE_B2C_JWK_SET_URI` | Cada fork | URL del JWKS (claves públicas) del tenant para validar la firma del JWT |
+| `RABBITMQ_PORT` | Cada fork | Puerto AMQP (ej. `5672`) |
+| `RABBITMQ_USER` | Cada fork | Usuario RabbitMQ |
+| `RABBITMQ_PASS` | Cada fork | Contraseña RabbitMQ |
+
+El workflow ya lee `${{ secrets.* }}` del repositorio que ejecuta Actions; no hace falta cambiar el YAML para multi-fork.
+
+**PRs al upstream:** no incluir `Wallet_DISPATCHFLOWDB/`, `nuevo_base64.txt`, `*_base64.txt` ni `.env`. Esos paths están en `.gitignore`; si aparecen en el diff, rechazar el PR.
 
 ### S3 en producción
 
@@ -69,7 +78,7 @@ El backend extrae los roles del claim `roles` (App Roles de Azure: `DESCARGA`, `
 
 ### Generar `ORACLE_WALLET_BASE64`
 
-Usa el **zip original descargado de Oracle** (archivos `tnsnames.ora`, `cwallet.sso`, etc. en la raíz del zip, sin carpeta intermedia):
+Usa el **zip original descargado de Oracle** de **tu** Autonomous Database (archivos `tnsnames.ora`, `cwallet.sso`, etc. en la raíz del zip, sin carpeta intermedia):
 
 ```bash
 base64 -i /ruta/a/Wallet_DISPATCHFLOWDB.zip | pbcopy
@@ -81,7 +90,7 @@ Ejemplo:
 base64 -i ~/Downloads/dispatch-flow-creds/Wallet_DISPATCHFLOWDB.zip | pbcopy
 ```
 
-Pega el resultado en el secret `ORACLE_WALLET_BASE64` de GitHub Actions.
+Pega el resultado en el secret `ORACLE_WALLET_BASE64` de GitHub Actions **del fork/repo que despliega**. No commits de ese valor en archivos tipo `nuevo_base64.txt` o `*_base64.txt`.
 
 Verificar en local antes de subir el secret:
 
@@ -93,6 +102,8 @@ ls wallet/tnsnames.ora
 ```
 
 **No uses** `zip -r wallet.zip Wallet_DISPATCHFLOWDB`: eso anida una carpeta extra y el wallet queda en `wallet/Wallet_DISPATCHFLOWDB/tnsnames.ora` en lugar de `wallet/tnsnames.ora`.
+
+En local para `./run-prod`: copia el zip a la raíz del proyecto y ejecuta `./scripts/setup-oracle-wallet.sh`. La carpeta `Wallet_DISPATCHFLOWDB/` queda solo en tu máquina (está en `.gitignore`).
 
 ### Determinar `USER_SERVER`
 

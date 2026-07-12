@@ -143,9 +143,22 @@ El script descomprime el wallet en `Wallet_DISPATCHFLOWDB/` (carpeta local, no v
 | `AWS_REGION` | Región S3 |
 | `S3_BUCKET_NAME` | Bucket prod (`dispatch-flow-prod`) |
 
-Archivos del wallet no se versionan (carpeta `Wallet_DISPATCHFLOWDB/` en `.gitignore`). Cada desarrollador provee su propio zip local y secret `ORACLE_WALLET_BASE64` en CI. No versionar `.env`.
+Archivos del wallet no se versionan (carpeta `Wallet_DISPATCHFLOWDB/` y `*_base64.txt` en `.gitignore`). Cada desarrollador/fork provee su propio zip local y configura el secret `ORACLE_WALLET_BASE64` en **su** repositorio de GitHub. No versionar `.env` ni el contenido del wallet.
 
-Despliegue automatizado en EC2: [docs/guia-despliegue-ec2.md](docs/guia-despliegue-ec2.md).
+### Multi-fork: Oracle por fork
+
+Si trabajas desde un **fork**, configura los secrets en **Settings → Secrets and variables → Actions** del **fork** (no del upstream). Cada fork debe usar su propia Autonomous Database:
+
+| Secret | Quién lo define | Notas |
+|--------|-----------------|-------|
+| `ORACLE_WALLET_BASE64` | Cada fork | Zip del wallet de **su** ATP en base64 |
+| `SPRING_DATASOURCE_USERNAME` / `PASSWORD` | Cada fork | Usuario de **su** ATP |
+| `SPRING_DATASOURCE_URL` | Cada fork | Alias TNS de **su** wallet (ej. `jdbc:oracle:thin:@midb_high`) |
+| `DOCKERHUB_*`, `EC2_*`, `AWS_*`, `AZURE_*`, `RABBITMQ_*` | Cada fork | Infraestructura propia |
+
+Local: `cp /ruta/a/Wallet_DISPATCHFLOWDB.zip .` → `./scripts/setup-oracle-wallet.sh` / `./run-prod`. **Nunca** hagas commit de `Wallet_DISPATCHFLOWDB/`, `nuevo_base64.txt` ni `*_base64.txt`. Los PRs al upstream no deben incluir diffs de wallet.
+
+Detalle de secrets y despliegue en EC2: [docs/guia-despliegue-ec2.md](docs/guia-despliegue-ec2.md).
 
 ## Ejecutar con Docker (prod local)
 
@@ -371,8 +384,6 @@ Diagrama de componentes y flujos: **[docs/arquitectura.md](docs/arquitectura.md)
 ## Health check (Público en prod)
 
 ```bash
-curl https://<TU-API-GATEWAY-URL>/actuator/health
-# o localmente: curl http://localhost:8080/actuator/health
 curl https://<TU-API-GATEWAY-URL>/actuator/health
 # o localmente: curl http://localhost:8080/actuator/health
 ```

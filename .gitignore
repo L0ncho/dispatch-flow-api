@@ -39,8 +39,15 @@ tmp/
 .env.*
 !.env.example
 
+### Oracle wallet / secrets (nunca versionar; cada fork usa los suyos) ###
 Wallet_DISPATCHFLOWDB.zip
 Wallet_DISPATCHFLOWDB/
-wallet_base64.txt
 wallet/
 wallet.zip
+wallet_base64.txt
+nuevo_base64.txt
+*_base64.txt
+*.sso
+ewallet.p12
+keystore.jks
+truststore.jks
