@@ -373,6 +373,4 @@ Diagrama de componentes y flujos: **[docs/arquitectura.md](docs/arquitectura.md)
 ```bash
 curl https://<TU-API-GATEWAY-URL>/actuator/health
 # o localmente: curl http://localhost:8080/actuator/health
-curl https://<TU-API-GATEWAY-URL>/actuator/health
-# o localmente: curl http://localhost:8080/actuator/health
 ```

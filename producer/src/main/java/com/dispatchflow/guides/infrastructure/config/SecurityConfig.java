@@ -19,19 +19,12 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // API Stateless
+            .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // 1. Actuator / Healthcheck público (para el API Gateway / Load Balancer)
                 .requestMatchers("/actuator/health").permitAll()
-                
-                // 2. Rol 1: Permitir SOLO usar el endpoint de Descargar guías 
                 .requestMatchers(HttpMethod.GET, "/api/guides/*/download").hasAnyAuthority("ROLE_DESCARGA", "ROLE_ADMIN")
-                
-                // 3. Rol 2: Permitir el uso del resto de endpoints (Crear, Modificar, Eliminar, Consultar)
                 .requestMatchers("/api/guides/**").hasAuthority("ROLE_ADMIN")
-                
-                // Cualquier otra petición debe estar autenticada
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
