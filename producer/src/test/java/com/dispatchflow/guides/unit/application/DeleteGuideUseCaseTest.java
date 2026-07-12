@@ -4,7 +4,9 @@ import com.dispatchflow.guides.application.DeleteGuideUseCase;
 import com.dispatchflow.guides.application.UpdateGuideUseCase;
 import com.dispatchflow.guides.application.dto.GuideResponse;
 import com.dispatchflow.guides.application.dto.UpdateGuideCommand;
+import com.dispatchflow.guides.application.ports.ObjectStoragePort;
 import com.dispatchflow.guides.domain.entities.DispatchGuide;
+import com.dispatchflow.guides.domain.repositories.GuideRepository;
 import com.dispatchflow.guides.domain.repositories.InMemoryGuideRepository;
 import com.dispatchflow.guides.domain.valueobjects.GuideId;
 import com.dispatchflow.guides.domain.valueobjects.GuideStatus;
@@ -80,5 +82,62 @@ class DeleteGuideUseCaseTest {
     @Test
     void throwsNotFoundWhenGuideDoesNotExist() {
         assertThrows(DomainError.class, () -> deleteGuideUseCase.execute("missing-id"));
+    }
+
+    @Test
+    void persistsDeletedStatusBeforeRemovingS3Object() {
+        GuideResponse created = GuideApplicationTestSupport.seedGuide(repository, FIXED_CLOCK, "Transportes Rápidos", objectStorage);
+        java.util.List<String> callOrder = new java.util.ArrayList<>();
+        GuideRepository orderingRepository = new GuideRepository() {
+            @Override
+            public void save(DispatchGuide guide) {
+                callOrder.add("save:" + guide.getStatus());
+                repository.save(guide);
+            }
+
+            @Override
+            public java.util.Optional<DispatchGuide> findById(GuideId id) {
+                return repository.findById(id);
+            }
+
+            @Override
+            public java.util.List<DispatchGuide> findAllActive() {
+                return repository.findAllActive();
+            }
+
+            @Override
+            public java.util.List<DispatchGuide> findByCarrierAndDispatchDate(
+                    String carrierName, LocalDate dispatchDate) {
+                return repository.findByCarrierAndDispatchDate(carrierName, dispatchDate);
+            }
+
+            @Override
+            public long nextSequence() {
+                return repository.nextSequence();
+            }
+        };
+        ObjectStoragePort orderingStorage = new ObjectStoragePort() {
+            @Override
+            public void store(String key, byte[] content) {
+                objectStorage.store(key, content);
+            }
+
+            @Override
+            public byte[] read(String key) {
+                return objectStorage.read(key);
+            }
+
+            @Override
+            public void delete(String key) {
+                callOrder.add("s3-delete");
+                objectStorage.delete(key);
+            }
+        };
+        DeleteGuideUseCase orderedDelete = new DeleteGuideUseCase(orderingRepository, orderingStorage, FIXED_CLOCK);
+
+        orderedDelete.execute(created.id());
+
+        assertEquals(java.util.List.of("save:DELETED", "s3-delete"), callOrder);
+        assertEquals(GuideStatus.DELETED, repository.findById(GuideId.create(created.id())).orElseThrow().getStatus());
     }
 }

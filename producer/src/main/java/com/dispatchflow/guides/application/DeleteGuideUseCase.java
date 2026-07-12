@@ -31,11 +31,12 @@ public class DeleteGuideUseCase {
             throw DomainError.notFound("Guide " + id + " not found");
         }
 
-        if (guide.getS3Key() != null && !guide.getS3Key().isBlank()) {
-            objectStorage.delete(guide.getS3Key());
-        }
-
+        String s3Key = guide.getS3Key();
         guide.markDeleted(clock.instant());
         guideRepository.save(guide);
+
+        if (s3Key != null && !s3Key.isBlank()) {
+            objectStorage.delete(s3Key);
+        }
     }
 }
