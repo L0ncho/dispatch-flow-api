@@ -20,4 +20,4 @@ export SPRING_PROFILES_ACTIVE=prod
 : "${AWS_REGION:?Debe definir AWS_REGION}"
 : "${S3_BUCKET_NAME:?Debe definir S3_BUCKET_NAME}"
 
-./mvnw spring-boot:run
+./mvnw -pl producer spring-boot:run

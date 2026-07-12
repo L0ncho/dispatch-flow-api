@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: ["main"]
 
 jobs:
   test:
@@ -49,6 +49,8 @@ jobs:
         run: |
           docker build -t "${DOCKERHUB_USERNAME}/dispatch-flow-api:latest" .
           docker push "${DOCKERHUB_USERNAME}/dispatch-flow-api:latest"
+          docker build -f dispatch-flow-consumer/Dockerfile -t "${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest" .
+          docker push "${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest"
 
       - name: Deploy to EC2
         env:
@@ -66,6 +68,9 @@ jobs:
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           AZURE_B2C_ISSUER_URI: ${{ secrets.AZURE_B2C_ISSUER_URI }}
           AZURE_B2C_JWK_SET_URI: ${{ secrets.AZURE_B2C_JWK_SET_URI }}
+          RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT }}
+          RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_PASS: ${{ secrets.RABBITMQ_PASS }}
         run: |
           mkdir -p ~/.ssh
           echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key.pem
@@ -75,10 +80,12 @@ jobs:
           EFS_HOST_MOUNT="${EFS_HOST_MOUNT:-/mnt/dispatch-flow-efs}"
 
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem "${USER_SERVER}@${EC2_HOST}" \
-            "docker pull ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest && \
+            "docker network create dispatch-net 2>/dev/null || true && \
+             docker start rabbitmq-dispatch 2>/dev/null || docker run -d --name rabbitmq-dispatch --network dispatch-net -p 5672:5672 -p 15672:15672 -e RABBITMQ_DEFAULT_USER='${RABBITMQ_USER}' -e RABBITMQ_DEFAULT_PASS='${RABBITMQ_PASS}' rabbitmq:3-management && \
+             docker pull ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest && \
              docker stop dispatch-flow-api 2>/dev/null || true && \
              docker rm dispatch-flow-api 2>/dev/null || true && \
-             docker run -d --name dispatch-flow-api -p 8080:8080 \
+             docker run -d --name dispatch-flow-api -p 8080:8080 --network dispatch-net \
                -v ${EFS_HOST_MOUNT}:/app/efs \
                -e SPRING_PROFILES_ACTIVE=prod \
                -e SPRING_DATASOURCE_URL='${DATASOURCE_URL}' \
@@ -93,4 +100,29 @@ jobs:
                -e EFS_BASE_PATH=/app/efs \
                -e AZURE_B2C_ISSUER_URI='${AZURE_B2C_ISSUER_URI}' \
                -e AZURE_B2C_JWK_SET_URI='${AZURE_B2C_JWK_SET_URI}' \
-               ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest"
+               -e RABBITMQ_HOST=rabbitmq-dispatch \
+               -e RABBITMQ_PORT='${RABBITMQ_PORT}' \
+               -e RABBITMQ_USER='${RABBITMQ_USER}' \
+               -e RABBITMQ_PASS='${RABBITMQ_PASS}' \
+               ${DOCKERHUB_USERNAME}/dispatch-flow-api:latest && \
+             docker pull ${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest && \
+             docker stop dispatch-flow-consumer 2>/dev/null || true && \
+             docker rm dispatch-flow-consumer 2>/dev/null || true && \
+             docker run -d --name dispatch-flow-consumer -p 8081:8081 --network dispatch-net \
+               -v ${EFS_HOST_MOUNT}:/app/efs \
+               -e SPRING_PROFILES_ACTIVE=prod \
+               -e SPRING_DATASOURCE_URL='${DATASOURCE_URL}' \
+               -e SPRING_DATASOURCE_USERNAME='${SPRING_DATASOURCE_USERNAME}' \
+               -e SPRING_DATASOURCE_PASSWORD='${SPRING_DATASOURCE_PASSWORD}' \
+               -e TNS_ADMIN=/app/wallet \
+               -e AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID}' \
+               -e AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY}' \
+               -e AWS_SESSION_TOKEN='${AWS_SESSION_TOKEN}' \
+               -e AWS_REGION='${AWS_REGION}' \
+               -e S3_BUCKET_NAME='${S3_BUCKET_NAME}' \
+               -e EFS_BASE_PATH=/app/efs \
+               -e RABBITMQ_HOST=rabbitmq-dispatch \
+               -e RABBITMQ_PORT='${RABBITMQ_PORT}' \
+               -e RABBITMQ_USER='${RABBITMQ_USER}' \
+               -e RABBITMQ_PASS='${RABBITMQ_PASS}' \
+               ${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest"
