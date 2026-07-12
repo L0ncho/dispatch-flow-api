@@ -2,6 +2,7 @@ package com.dispatchflow.consumer.infrastructure.http;
 
 import com.dispatchflow.consumer.application.ProcessNextQueuedGuideUseCase;
 import com.dispatchflow.consumer.application.dto.ProcessQueuedGuideResponse;
+import com.dispatchflow.consumer.application.dto.ProcessedQueuedGuide;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,10 +22,11 @@ public class ProcessQueuedGuideController {
 
     @PostMapping("/process-next")
     public ResponseEntity<ProcessQueuedGuideResponse> processNext() {
-        Optional<String> trackingId = processNextQueuedGuideUseCase.execute();
-        if (trackingId.isEmpty()) {
+        Optional<ProcessedQueuedGuide> processed = processNextQueuedGuideUseCase.execute();
+        if (processed.isEmpty()) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.ok(ProcessQueuedGuideResponse.processed(trackingId.get()));
+        ProcessedQueuedGuide result = processed.get();
+        return ResponseEntity.ok(ProcessQueuedGuideResponse.processed(result.trackingId(), result.guideId()));
     }
 }

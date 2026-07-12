@@ -191,7 +191,7 @@ curl -X POST "http://<IP_EC2>:8081/api/guides/process-next" \
   -H "Authorization: Bearer <TU_TOKEN_JWT_ADMIN>"
 ```
 
-- `200` + `trackingId`: mensaje procesado (PDF/S3/Oracle).
+- `200` + `trackingId` + `guideId`: mensaje procesado (PDF/S3/Oracle); usar `guideId` para consultar la guía en el producer.
 - `204`: cola vacía.
 - `5xx`: fallo de procesamiento; el mensaje va a `guide.created.dlq` (nack).
 

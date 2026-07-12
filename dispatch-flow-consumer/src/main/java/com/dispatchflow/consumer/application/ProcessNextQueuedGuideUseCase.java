@@ -1,5 +1,6 @@
 package com.dispatchflow.consumer.application;
 
+import com.dispatchflow.consumer.application.dto.ProcessedQueuedGuide;
 import com.dispatchflow.consumer.application.ports.GuideQueuePuller;
 import com.dispatchflow.shared.messaging.GuideCreationMessage;
 
@@ -17,7 +18,7 @@ public class ProcessNextQueuedGuideUseCase {
         this.processGuideMessageUseCase = processGuideMessageUseCase;
     }
 
-    public Optional<String> execute() {
+    public Optional<ProcessedQueuedGuide> execute() {
         Optional<GuideQueuePuller.PulledGuideMessage> pulled = guideQueuePuller.pullNext();
         if (pulled.isEmpty()) {
             return Optional.empty();
@@ -26,9 +27,9 @@ public class ProcessNextQueuedGuideUseCase {
         GuideQueuePuller.PulledGuideMessage message = pulled.get();
         GuideCreationMessage payload = message.payload();
         try {
-            processGuideMessageUseCase.execute(payload);
+            String guideId = processGuideMessageUseCase.execute(payload);
             message.acknowledge();
-            return Optional.of(payload.trackingId());
+            return Optional.of(new ProcessedQueuedGuide(payload.trackingId(), guideId));
         } catch (RuntimeException error) {
             message.rejectWithoutRequeue();
             throw error;
