@@ -5,11 +5,13 @@ import com.dispatchflow.shared.messaging.GuideCreationMessage;
 import com.dispatchflow.shared.messaging.RabbitMqTopology;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.GetResponse;
-import org.springframework.amqp.rabbit.connection.Connection;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.connection.Connection;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.support.DefaultMessagePropertiesConverter;
+import org.springframework.amqp.rabbit.support.MessagePropertiesConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -17,8 +19,11 @@ import java.util.concurrent.TimeoutException;
 
 public class RabbitGuideQueuePuller implements GuideQueuePuller {
 
+    private static final String MESSAGE_CHARSET = "UTF-8";
+
     private final ConnectionFactory connectionFactory;
     private final MessageConverter messageConverter;
+    private final MessagePropertiesConverter messagePropertiesConverter = new DefaultMessagePropertiesConverter();
 
     public RabbitGuideQueuePuller(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
         this.connectionFactory = connectionFactory;
@@ -36,17 +41,23 @@ public class RabbitGuideQueuePuller implements GuideQueuePuller {
                 return Optional.empty();
             }
 
-            MessageProperties properties = new MessageProperties();
-            properties.setDeliveryTag(response.getEnvelope().getDeliveryTag());
+            long deliveryTag = response.getEnvelope().getDeliveryTag();
+            MessageProperties properties = messagePropertiesConverter.toMessageProperties(
+                    response.getProps(),
+                    response.getEnvelope(),
+                    MESSAGE_CHARSET);
             Message amqpMessage = new Message(response.getBody(), properties);
             Object converted = messageConverter.fromMessage(amqpMessage);
-            if (!(converted instanceof GuideCreationMessage guideCreationMessage)) {
-                channel.basicNack(response.getEnvelope().getDeliveryTag(), false, false);
+
+            boolean isNotGuideCreationMessage = !(converted instanceof GuideCreationMessage);
+            if (isNotGuideCreationMessage) {
+                channel.basicNack(deliveryTag, false, false);
                 closeQuietly(channel, connection);
-                throw new IllegalStateException("Unexpected message type from guide queue");
+                throw new IllegalStateException(
+                        "Unexpected message type from guide queue: " + converted.getClass().getName());
             }
 
-            long deliveryTag = response.getEnvelope().getDeliveryTag();
+            GuideCreationMessage guideCreationMessage = (GuideCreationMessage) converted;
             return Optional.of(new RabbitPulledGuideMessage(guideCreationMessage, channel, connection, deliveryTag));
         } catch (IOException error) {
             closeQuietly(channel, connection);
