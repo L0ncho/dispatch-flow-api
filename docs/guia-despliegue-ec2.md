@@ -23,6 +23,8 @@ Configurar en **Settings → Secrets and variables → Actions** del repositorio
 
 Cada fork debe apuntar a **su propia** Autonomous Database Oracle: wallet, usuario, contraseña y `SPRING_DATASOURCE_URL` (alias TNS) no se comparten entre forks y **nunca** se versionan en el repo.
 
+> **Schema `async_dispatch_guides`:** el CHECK de `STATUS` debe permitir `PROCESSED`, `FAILED` y `DELETED`. Sin `DELETED`, el DELETE lógico del producer falla con `ORA-02290` (`ddl-auto=update` no lo arregla). Ver [README](../README.md) y [arquitectura](arquitectura.md).
+
 | Secret | Quién lo define | Valor |
 | ------ | --------------- | ----- |
 | `ORACLE_WALLET_BASE64` | Cada fork | Zip del wallet de **su** ATP codificado en base64 |

@@ -258,7 +258,9 @@ Verificar objetos en local:
 awslocal s3 ls s3://dispatch-flow-local/guides/ --recursive
 ```
 
-**Delete:** borra el objeto S3 (si existe) y marca la guía como `DELETED` en BD.
+**Delete:** marca la guía como `DELETED` en BD y luego borra el objeto S3 (si existe).
+
+> **Oracle / `async_dispatch_guides`:** el check de `STATUS` debe permitir `PROCESSED`, `FAILED` y `DELETED`. Si solo admite los dos primeros, el DELETE vía API falla con 500 (`ORA-02290`) y `ddl-auto=update` no corrige ese CHECK. Ampliar o recrear el constraint incluyendo `'DELETED'`.
 
 **Download:** lee desde S3 si hay `s3Key`; fallback a EFS para datos legacy.
 

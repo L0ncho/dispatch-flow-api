@@ -159,6 +159,8 @@ La configuración se declara en Java (`RabbitMQConfig`) al arrancar cada microse
 | CRUD sobre `dispatch_guides` | ✓ | |
 | Enviar fallos a DLQ | | ✓ |
 
+> **Advertencia Oracle:** en `async_dispatch_guides`, el CHECK de `STATUS` debe incluir `DELETED` (además de `PROCESSED` / `FAILED`). Sin eso, el DELETE lógico del producer falla con `ORA-02290`; `ddl-auto=update` no actualiza ese constraint.
+
 ## Despliegue local
 
 ```bash
