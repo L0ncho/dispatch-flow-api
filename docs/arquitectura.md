@@ -59,6 +59,10 @@ flowchart TB
     Exchange -.-> DLQ
 ```
 
+
+
+
+
 ## Flujo 1 — Crear guía (asíncrono)
 
 Responsabilidad del **productor**: recibir, publicar y responder. No genera PDF ni persiste la guía final.
@@ -92,6 +96,10 @@ sequenceDiagram
     Cn->>O: guardar metadata + s3Key
 ```
 
+
+
+
+
 ## Flujo 2 — Error y DLQ
 
 ```mermaid
@@ -110,6 +118,10 @@ sequenceDiagram
     RMQ->>DLQ: x-dead-letter-exchange
 ```
 
+
+
+
+
 ## Estructura del repositorio (Maven multi-módulo)
 
 ```mermaid
@@ -126,40 +138,56 @@ flowchart LR
     Cons -->|consume| RMQ
 ```
 
-| Módulo | Artefacto | Puerto | Rol |
-|--------|-----------|--------|-----|
-| `guides-shared` | librería JAR | — | Contratos y dominio compartido |
-| `producer` | `dispatch-flow-api` | 8080 | API REST, publicador RabbitMQ, CRUD legacy |
-| `dispatch-flow-consumer` | `dispatch-flow-consumer` | 8081 | process-next / listener opcional, S3, tabla async |
+
+
+
+| Módulo                   | Artefacto                | Puerto | Rol                                               |
+| ------------------------ | ------------------------ | ------ | ------------------------------------------------- |
+| `guides-shared`          | librería JAR             | —      | Contratos y dominio compartido                    |
+| `producer`               | `dispatch-flow-api`      | 8080   | API REST, publicador RabbitMQ, CRUD legacy        |
+| `dispatch-flow-consumer` | `dispatch-flow-consumer` | 8081   | process-next / listener opcional, S3, tabla async |
+
+
+
 
 ## Topología RabbitMQ
 
-| Recurso | Nombre |
-|---------|--------|
-| Exchange | `dispatch.exchange` (direct) |
-| Cola principal | `guide.created.queue` (durable) |
-| DLQ | `guide.created.dlq` (durable) |
-| Routing key principal | `guide.created.routingKey` |
-| Routing key DLQ | `guide.created.dlqRoutingKey` |
+
+| Recurso               | Nombre                          |
+| --------------------- | ------------------------------- |
+| Exchange              | `dispatch.exchange` (direct)    |
+| Cola principal        | `guide.created.queue` (durable) |
+| DLQ                   | `guide.created.dlq` (durable)   |
+| Routing key principal | `guide.created.routingKey`      |
+| Routing key DLQ       | `guide.created.dlqRoutingKey`   |
+
 
 La configuración se declara en Java (`RabbitMQConfig`) al arrancar cada microservicio. No hay endpoints HTTP para crear colas.
 
 ## Separación de responsabilidades
 
-| Acción | MS Productor | MS Consumidor |
-|--------|:------------:|:-------------:|
-| Recibir POST /api/guides | ✓ | |
-| Publicar en Cola 1 | ✓ | |
-| Responder 202 ACCEPTED | ✓ | |
-| Escuchar Cola 1 (si LISTENER_ENABLED) | | ✓ |
-| POST /api/guides/process-next (manual) | | ✓ |
-| Generar PDF | | ✓ |
-| Subir S3 | | ✓ |
-| Guardar en `async_dispatch_guides` | | ✓ |
-| CRUD sobre `dispatch_guides` | ✓ | |
-| Enviar fallos a DLQ | | ✓ |
+
+| Acción                                 | MS Productor | MS Consumidor |
+| -------------------------------------- | ------------ | ------------- |
+| Recibir POST /api/guides               | ✓            |               |
+| Publicar en Cola 1                     | ✓            |               |
+| Responder 202 ACCEPTED                 | ✓            |               |
+| Escuchar Cola 1 (si LISTENER_ENABLED)  |              | ✓             |
+| POST /api/guides/process-next (manual) |              | ✓             |
+| Generar PDF                            |              | ✓             |
+| Subir S3                               |              | ✓             |
+| Guardar en `async_dispatch_guides`     |              | ✓             |
+| CRUD sobre `dispatch_guides`           | ✓            |               |
+| Enviar fallos a DLQ                    |              | ✓             |
+
 
 > **Advertencia Oracle:** en `async_dispatch_guides`, el CHECK de `STATUS` debe incluir `DELETED` (además de `PROCESSED` / `FAILED`). Sin eso, el DELETE lógico del producer falla con `ORA-02290`; `ddl-auto=update` no actualiza ese constraint.
+> **Fix en caso de encontrar este error**, ejecutar manualmente el la DB de Oracle:
+> ALTER TABLE async_dispatch_guides DROP CONSTRAINT SYS_C0024467;
+> ALTER TABLE async_dispatch_guides ADD CONSTRAINT async_dispatch_guides_status_chk
+>  CHECK (status IN ('PROCESSED', 'FAILED', 'DELETED'));
+
+
 
 ## Despliegue local
 
@@ -169,4 +197,4 @@ docker compose up -d          # RabbitMQ + LocalStack
 ./run-consumer                # consumidor :8081
 ```
 
-Consola RabbitMQ: http://localhost:15672 (credenciales en `.env` o `guest`/`guest`).
+Consola RabbitMQ: [http://localhost:15672](http://localhost:15672) (credenciales en `.env` o `guest`/`guest`).
