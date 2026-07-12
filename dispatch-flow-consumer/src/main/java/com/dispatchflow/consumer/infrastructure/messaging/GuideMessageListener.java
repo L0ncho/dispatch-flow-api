@@ -15,7 +15,9 @@ public class GuideMessageListener {
         this.processGuideMessageUseCase = processGuideMessageUseCase;
     }
 
-    @RabbitListener(queues = RabbitMqTopology.MAIN_QUEUE)
+    @RabbitListener(
+            queues = RabbitMqTopology.MAIN_QUEUE,
+            autoStartup = "${dispatch.consumer.listener-enabled:false}")
     public void onGuideCreationMessage(GuideCreationMessage message) {
         processGuideMessageUseCase.execute(message);
     }

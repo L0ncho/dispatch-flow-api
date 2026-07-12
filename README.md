@@ -112,7 +112,7 @@ En otra terminal, con RabbitMQ activo (`docker compose up -d`):
 ```
 
 - **MS Productor** (`run-local`): puerto **8080** — recibe `POST /api/guides` y publica en RabbitMQ.
-- **MS Consumidor** (`run-consumer`): puerto **8081** — escucha la cola con `@RabbitListener`, genera PDF, sube a S3 y persiste en `async_dispatch_guides`.
+- **MS Consumidor** (`run-consumer`): puerto **8081** — por defecto en **modo manual** (`DISPATCH_CONSUMER_LISTENER_ENABLED=false`): procesa con `POST /api/guides/process-next`. Con `true`, usa `@RabbitListener` automático. Genera PDF, sube a S3 y persiste en `async_dispatch_guides`.
 
 Este script levanta LocalStack, crea el bucket `dispatch-flow-local`, inicia RabbitMQ y arranca el productor con perfil `local` usando **H2 in-memory**. En local **no se requiere token JWT**.
 
@@ -213,12 +213,14 @@ RabbitMQ local: `docker compose up -d` — puertos **5672** (AMQP) y **15672** (
 | `RABBITMQ_PORT` | `5672` | `5672` |
 | `RABBITMQ_USER` | `guest` | secret CI |
 | `RABBITMQ_PASS` | `guest` | secret CI |
+| `DISPATCH_CONSUMER_LISTENER_ENABLED` | `false` | secret CI (default `false` = manual) |
 
 Al **crear** una guía vía `POST /api/guides` (flujo asíncrono):
 
 1. El productor valida la solicitud y publica `GuideCreationMessage` en RabbitMQ.
 2. Responde `202 Accepted` con `{ "status": "ACCEPTED", "trackingId": "..." }`.
-3. El consumidor procesa el mensaje: genera PDF, sube a S3 y guarda en `async_dispatch_guides`.
+3. Con listener **apagado** (default): llamar `POST http://localhost:8081/api/guides/process-next` (JWT `ROLE_ADMIN` en prod) para generar PDF, subir a S3 y guardar en `async_dispatch_guides`.
+4. Con `DISPATCH_CONSUMER_LISTENER_ENABLED=true`: el consumidor procesa solo con `@RabbitListener`.
 
 Al **actualizar** una guía existente (`PUT /api/guides/{id}`), el productor sigue el flujo síncrono sobre `dispatch_guides` (PDF + EFS + S3).
 
@@ -371,7 +373,7 @@ El proyecto es un **monorepo Maven multi-módulo** con arquitectura hexagonal (i
 
 - **`guides-shared`**: dominio, value objects, `GuideCreationMessage`, `RabbitMqTopology`
 - **`producer`**: casos de uso del productor, puerto `GuideMessagePublisher`, adaptadores JPA/S3/RabbitMQ, controladores REST
-- **`dispatch-flow-consumer`**: `ProcessGuideMessageUseCase`, `@RabbitListener`, persistencia `async_dispatch_guides`
+- **`dispatch-flow-consumer`**: `ProcessGuideMessageUseCase`, `POST /api/guides/process-next`, `@RabbitListener` opcional, persistencia `async_dispatch_guides`
 
 Capas por módulo:
 

@@ -145,6 +145,11 @@
     {
       "key": "dispatchDate",
       "value": "2026-06-02"
+    },
+    {
+      "key": "consumerUrl",
+      "value": "http://localhost:8081",
+      "description": "MS Consumidor. process-next y health."
     }
   ],
   "item": [
@@ -207,7 +212,9 @@
             },
             "url": {
               "raw": "{{tokenUrl}}",
-              "host": ["{{tokenUrl}}"]
+              "host": [
+                "{{tokenUrl}}"
+              ]
             },
             "description": "Obtiene un token para Microsoft Graph (scope `.default`). Guarda el token en la variable `graphToken`."
           },
@@ -250,8 +257,15 @@
             "url": {
               "raw": "https://graph.microsoft.com/v1.0/servicePrincipals(appId='{{clientId}}')",
               "protocol": "https",
-              "host": ["graph", "microsoft", "com"],
-              "path": ["v1.0", "servicePrincipals(appId='{{clientId}}')"]
+              "host": [
+                "graph",
+                "microsoft",
+                "com"
+              ],
+              "path": [
+                "v1.0",
+                "servicePrincipals(appId='{{clientId}}')"
+              ]
             },
             "description": "Obtiene el service principal de la app por su appId y guarda su `id` en la variable `spId`."
           },
@@ -297,8 +311,17 @@
             "url": {
               "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
               "protocol": "https",
-              "host": ["graph", "microsoft", "com"],
-              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+              "host": [
+                "graph",
+                "microsoft",
+                "com"
+              ],
+              "path": [
+                "v1.0",
+                "servicePrincipals",
+                "{{spId}}",
+                "appRoleAssignedTo"
+              ]
             },
             "description": "Asigna el App Role ADMIN al propio service principal. El próximo token de la API incluirá `roles: [\"ADMIN\"]`."
           },
@@ -344,8 +367,17 @@
             "url": {
               "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
               "protocol": "https",
-              "host": ["graph", "microsoft", "com"],
-              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+              "host": [
+                "graph",
+                "microsoft",
+                "com"
+              ],
+              "path": [
+                "v1.0",
+                "servicePrincipals",
+                "{{spId}}",
+                "appRoleAssignedTo"
+              ]
             },
             "description": "Opcional. Asigna también el App Role DESCARGA al mismo service principal. Útil solo si quieres que esta app tenga ambos roles; para demostrar permisos separados conviene una segunda app registration."
           },
@@ -391,8 +423,17 @@
             "url": {
               "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
               "protocol": "https",
-              "host": ["graph", "microsoft", "com"],
-              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+              "host": [
+                "graph",
+                "microsoft",
+                "com"
+              ],
+              "path": [
+                "v1.0",
+                "servicePrincipals",
+                "{{spId}}",
+                "appRoleAssignedTo"
+              ]
             },
             "description": "Asigna el App Role ADMIN al USUARIO admin (`principalId` = `adminUserId`). Requisito previo: el App Role ADMIN debe permitir `allowedMemberTypes: [\"User\"]` y la variable `adminUserId` debe contener el Object ID del usuario (Azure portal > Users > admin > Object ID). El token de ese usuario incluirá `roles: [\"ADMIN\"]`."
           },
@@ -438,8 +479,17 @@
             "url": {
               "raw": "https://graph.microsoft.com/v1.0/servicePrincipals/{{spId}}/appRoleAssignedTo",
               "protocol": "https",
-              "host": ["graph", "microsoft", "com"],
-              "path": ["v1.0", "servicePrincipals", "{{spId}}", "appRoleAssignedTo"]
+              "host": [
+                "graph",
+                "microsoft",
+                "com"
+              ],
+              "path": [
+                "v1.0",
+                "servicePrincipals",
+                "{{spId}}",
+                "appRoleAssignedTo"
+              ]
             },
             "description": "Asigna el App Role DESCARGA al USUARIO descarga (`principalId` = `descargaUserId`). Requisito previo: el App Role DESCARGA debe permitir `allowedMemberTypes: [\"User\"]` y la variable `descargaUserId` debe contener el Object ID del usuario. El token de ese usuario incluirá `roles: [\"DESCARGA\"]` (solo podrá usar el endpoint de descarga)."
           },
@@ -491,8 +541,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/guides",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides"
+              ]
             },
             "description": "Crea una guía de despacho. Genera PDF en EFS, sube a S3, `guideNumber`, `efsPath`, `s3Key` y `status: UPLOADED_TO_S3`."
           },
@@ -526,8 +581,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/{{guideId}}/download",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "{{guideId}}", "download"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "{{guideId}}",
+                "download"
+              ]
             },
             "description": "Descarga el PDF desde S3 (fallback EFS). Ejecutar después de Create Guide."
           },
@@ -558,8 +620,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/{{guideId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "{{guideId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "{{guideId}}"
+              ]
             },
             "description": "Obtiene una guía por ID. Devuelve 404 si no existe o fue eliminada lógicamente."
           },
@@ -589,8 +657,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides"
+              ]
             },
             "description": "Lista todas las guías activas (excluye las marcadas como DELETED)."
           },
@@ -620,8 +693,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/search?carrierName={{carrierName}}&date={{dispatchDate}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "search"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "search"
+              ],
               "query": [
                 {
                   "key": "carrierName",
@@ -678,8 +757,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/guides/{{guideId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "{{guideId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "{{guideId}}"
+              ]
             },
             "description": "Actualiza una guía existente y regenera PDF en EFS + S3. Status final: UPLOADED_TO_S3."
           },
@@ -705,8 +790,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/{{guideId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "{{guideId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "{{guideId}}"
+              ]
             },
             "description": "Borra objeto S3 y eliminación lógica. La guía queda con status DELETED."
           },
@@ -736,8 +827,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/unknown-id",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "unknown-id"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "unknown-id"
+              ]
             },
             "description": "Ejemplo de guía inexistente. Útil para verificar el manejo de errores 404."
           },
@@ -778,8 +875,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/guides",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides"
+              ]
             },
             "description": "Ejemplo de request inválido para verificar validación de campos obligatorios."
           },
@@ -875,8 +977,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/guides/{{guideId}}/download",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides", "{{guideId}}", "download"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "{{guideId}}",
+                "download"
+              ]
             },
             "description": "Con el token del usuario `descarga` (rol DESCARGA), la descarga está permitida. Requiere un `guideId` creado previamente por el usuario admin."
           },
@@ -911,10 +1020,98 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/guides",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "guides"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides"
+              ]
             },
             "description": "Con el token del usuario `descarga` (rol DESCARGA), crear una guía está denegado: el backend responde 403 porque ese endpoint exige ROLE_ADMIN."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "MS Consumer (:8081)",
+      "description": "Consumo manual de guide.created.queue. Requiere DISPATCH_CONSUMER_LISTENER_ENABLED=false (default). Auth: mismo JWT ROLE_ADMIN que create.",
+      "item": [
+        {
+          "name": "Process Next Queued Guide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 204', function () {",
+                  "    pm.expect([200, 204]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.test('PROCESSED with trackingId', function () {",
+                  "        pm.expect(json.status).to.eql('PROCESSED');",
+                  "        pm.expect(json.trackingId).to.be.a('string').and.not.empty;",
+                  "        pm.collectionVariables.set('trackingId', json.trackingId);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{consumerUrl}}/api/guides/process-next",
+              "host": [
+                "{{consumerUrl}}"
+              ],
+              "path": [
+                "api",
+                "guides",
+                "process-next"
+              ]
+            },
+            "description": "Saca un mensaje de guide.created.queue y lo procesa (PDF/S3/Oracle). 204 si la cola está vacía. En fallo, nack → DLQ."
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check (Consumer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{consumerUrl}}/actuator/health",
+              "host": [
+                "{{consumerUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Health del MS Consumidor (:8081)."
           },
           "response": []
         }
@@ -946,8 +1143,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/actuator/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["actuator", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
             },
             "description": "Verifica que la aplicación está en ejecución. Endpoint público (sin token)."
           },

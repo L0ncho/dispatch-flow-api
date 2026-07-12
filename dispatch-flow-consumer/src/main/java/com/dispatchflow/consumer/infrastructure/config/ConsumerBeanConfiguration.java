@@ -1,6 +1,9 @@
 package com.dispatchflow.consumer.infrastructure.config;
 
 import com.dispatchflow.consumer.application.ProcessGuideMessageUseCase;
+import com.dispatchflow.consumer.application.ProcessNextQueuedGuideUseCase;
+import com.dispatchflow.consumer.application.ports.GuideQueuePuller;
+import com.dispatchflow.consumer.infrastructure.messaging.RabbitGuideQueuePuller;
 import com.dispatchflow.consumer.infrastructure.persistence.AsyncDispatchGuideRepository;
 import com.dispatchflow.consumer.infrastructure.persistence.AsyncGuideSequenceRepository;
 import com.dispatchflow.guides.application.GuidePdfEfsStorage;
@@ -11,6 +14,8 @@ import com.dispatchflow.guides.application.ports.ObjectStoragePort;
 import com.dispatchflow.guides.domain.services.GuideNumberGenerator;
 import com.dispatchflow.guides.domain.services.GuidePdfPathBuilder;
 import com.dispatchflow.guides.infrastructure.config.EfsStorageProperties;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -69,5 +74,19 @@ public class ConsumerBeanConfiguration {
                 guidePdfS3Storage,
                 s3BucketName,
                 clock);
+    }
+
+    @Bean
+    public GuideQueuePuller guideQueuePuller(
+            ConnectionFactory connectionFactory,
+            MessageConverter messageConverter) {
+        return new RabbitGuideQueuePuller(connectionFactory, messageConverter);
+    }
+
+    @Bean
+    public ProcessNextQueuedGuideUseCase processNextQueuedGuideUseCase(
+            GuideQueuePuller guideQueuePuller,
+            ProcessGuideMessageUseCase processGuideMessageUseCase) {
+        return new ProcessNextQueuedGuideUseCase(guideQueuePuller, processGuideMessageUseCase);
     }
 }

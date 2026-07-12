@@ -63,6 +63,8 @@ flowchart TB
 
 Responsabilidad del **productor**: recibir, publicar y responder. No genera PDF ni persiste la guía final.
 
+Por defecto el consumidor está en **modo manual** (`DISPATCH_CONSUMER_LISTENER_ENABLED=false`): el mensaje permanece en la cola hasta `POST /api/guides/process-next`. Con `true`, el `@RabbitListener` procesa solo.
+
 ```mermaid
 sequenceDiagram
     participant C as Cliente
@@ -78,7 +80,12 @@ sequenceDiagram
     P->>RMQ: GuideCreationMessage + trackingId
     P-->>C: 202 ACCEPTED
 
-    RMQ->>Cn: mensaje automático @RabbitListener
+    alt Listener enabled
+        RMQ->>Cn: mensaje automatico RabbitListener
+    else Manual default
+        C->>Cn: POST /api/guides/process-next
+        Cn->>RMQ: basicGet Cola1
+    end
     Cn->>Cn: validar + crear DispatchGuide
     Cn->>Cn: generar PDF
     Cn->>S3: subir PDF
@@ -93,10 +100,12 @@ sequenceDiagram
     participant Cn as MS Consumidor
     participant DLQ as RabbitMQ Cola2 DLQ
 
-    RMQ->>Cn: mensaje
+    RMQ->>Cn: mensaje listener o process-next
     Cn->>Cn: procesar
-    Note over Cn: Error PDF / S3 / Oracle / validación
-    Cn->>Cn: retry hasta 3 intentos
+    Note over Cn: Error PDF / S3 / Oracle / validacion
+    alt Listener automatico
+        Cn->>Cn: retry hasta 3 intentos
+    end
     Cn->>RMQ: reject sin requeue
     RMQ->>DLQ: x-dead-letter-exchange
 ```
@@ -121,7 +130,7 @@ flowchart LR
 |--------|-----------|--------|-----|
 | `guides-shared` | librería JAR | — | Contratos y dominio compartido |
 | `producer` | `dispatch-flow-api` | 8080 | API REST, publicador RabbitMQ, CRUD legacy |
-| `dispatch-flow-consumer` | `dispatch-flow-consumer` | 8081 | Listener, procesamiento, S3, tabla async |
+| `dispatch-flow-consumer` | `dispatch-flow-consumer` | 8081 | process-next / listener opcional, S3, tabla async |
 
 ## Topología RabbitMQ
 
@@ -142,7 +151,8 @@ La configuración se declara en Java (`RabbitMQConfig`) al arrancar cada microse
 | Recibir POST /api/guides | ✓ | |
 | Publicar en Cola 1 | ✓ | |
 | Responder 202 ACCEPTED | ✓ | |
-| Escuchar Cola 1 | | ✓ |
+| Escuchar Cola 1 (si LISTENER_ENABLED) | | ✓ |
+| POST /api/guides/process-next (manual) | | ✓ |
 | Generar PDF | | ✓ |
 | Subir S3 | | ✓ |
 | Guardar en `async_dispatch_guides` | | ✓ |
