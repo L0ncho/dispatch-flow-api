@@ -23,6 +23,8 @@ Configurar en **Settings → Secrets and variables → Actions** del repositorio
 
 Cada fork debe apuntar a **su propia** Autonomous Database Oracle: wallet, usuario, contraseña y `SPRING_DATASOURCE_URL` (alias TNS) no se comparten entre forks y **nunca** se versionan en el repo.
 
+> **Schema `async_dispatch_guides`:** el CHECK de `STATUS` debe permitir `PROCESSED`, `FAILED` y `DELETED`. Sin `DELETED`, el DELETE lógico del producer falla con `ORA-02290` (`ddl-auto=update` no lo arregla). Ver [README](../README.md) y [arquitectura](arquitectura.md).
+
 | Secret | Quién lo define | Valor |
 | ------ | --------------- | ----- |
 | `ORACLE_WALLET_BASE64` | Cada fork | Zip del wallet de **su** ATP codificado en base64 |
@@ -44,8 +46,11 @@ Cada fork debe apuntar a **su propia** Autonomous Database Oracle: wallet, usuar
 | `RABBITMQ_PORT` | Cada fork | Puerto AMQP (ej. `5672`) |
 | `RABBITMQ_USER` | Cada fork | Usuario RabbitMQ |
 | `RABBITMQ_PASS` | Cada fork | Contraseña RabbitMQ |
+| `DISPATCH_CONSUMER_LISTENER_ENABLED` | Cada fork | `false` (default): consumo manual vía `POST /api/guides/process-next`. `true`: activa el `@RabbitListener` automático |
 
-El workflow ya lee `${{ secrets.* }}` del repositorio que ejecuta Actions; no hace falta cambiar el YAML para multi-fork.
+El workflow ya lee `${{ secrets.* }}` del repositorio que ejecuta Actions; no hace falta cambiar el YAML para multi-fork. Si el secret no existe, el deploy usa `false` (modo manual).
+
+**Consumer en prod:** además de Oracle/S3/RabbitMQ, necesita `AZURE_B2C_ISSUER_URI` y `AZURE_B2C_JWK_SET_URI` (mismas que el producer) para proteger `POST /api/guides/process-next` con JWT + `ROLE_ADMIN`.
 
 **PRs al upstream:** no incluir `Wallet_DISPATCHFLOWDB/`, `nuevo_base64.txt`, `*_base64.txt` ni `.env`. Esos paths están en `.gitignore`; si aparecen en el diff, rechazar el PR.
 
@@ -144,7 +149,7 @@ El pipeline enlaza automáticamente:
 
 - Docker instalado.
 - **EFS montado** en `/mnt/dispatch-flow-efs` ([configuracion-efs-ec2.md](configuracion-efs-ec2.md)).
-- Security group: regla de entrada TCP en el puerto **8080** (API) y **15672** (RabbitMQ Management).
+- Security group: regla de entrada TCP en el puerto **8080** (API producer), **8081** (consumer / `process-next`) y **15672** (RabbitMQ Management).
 - Acceso SSH con la llave asociada a `EC2_SSH_KEY`.
 - No desplegar `Wallet_DISPATCHFLOWDB/` ni `.env` en el servidor.
 
@@ -177,8 +182,22 @@ Sustituir `<IP_EC2>` por la IP pública de la instancia:
 
 ```text
 http://<IP_EC2>:8080/actuator/health
+http://<IP_EC2>:8081/actuator/health
 http://<IP_EC2>:8080/api/guides
 ```
+
+Con `DISPATCH_CONSUMER_LISTENER_ENABLED=false` (default), tras un `POST /api/guides` (202) hay que procesar la cola a mano:
+
+```bash
+curl -X POST "http://<IP_EC2>:8081/api/guides/process-next" \
+  -H "Authorization: Bearer <TU_TOKEN_JWT_ADMIN>"
+```
+
+- `200` + `trackingId` + `guideId`: mensaje procesado (PDF/S3/Oracle); usar `guideId` para consultar la guía en el producer.
+- `204`: cola vacía.
+- `5xx`: fallo de procesamiento; el mensaje va a `guide.created.dlq` (nack).
+
+Para demo DLQ en vivo: recrear el contenedor consumer con `S3_BUCKET_NAME` inválido (sin redesplegar el pipeline), crear guía, llamar `process-next`, verificar la DLQ en RabbitMQ Management (`:15672`), y restaurar el bucket.
 
 Crear una guía de prueba directa:
 

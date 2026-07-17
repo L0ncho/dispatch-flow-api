@@ -53,7 +53,7 @@ public class S3ObjectStorageAdapter implements ObjectStoragePort {
         try {
             s3Client.deleteObject(
                     DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
-        } catch (S3Exception exception) {
+        } catch (RuntimeException exception) {
             throw DomainError.other("Could not delete object from S3");
         }
     }

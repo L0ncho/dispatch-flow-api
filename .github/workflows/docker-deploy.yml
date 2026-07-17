@@ -2,9 +2,9 @@ name: Docker Deploy
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
-    branches: [main]
+    branches: ["main", "dev"]
 
 jobs:
   test:
@@ -71,6 +71,7 @@ jobs:
           RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT }}
           RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
           RABBITMQ_PASS: ${{ secrets.RABBITMQ_PASS }}
+          DISPATCH_CONSUMER_LISTENER_ENABLED: ${{ secrets.DISPATCH_CONSUMER_LISTENER_ENABLED }}
         run: |
           mkdir -p ~/.ssh
           echo "$EC2_SSH_KEY" > ~/.ssh/ec2_key.pem
@@ -78,6 +79,7 @@ jobs:
 
           DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:oracle:thin:@dispatchflowdb_high}"
           EFS_HOST_MOUNT="${EFS_HOST_MOUNT:-/mnt/dispatch-flow-efs}"
+          CONSUMER_LISTENER_ENABLED="${DISPATCH_CONSUMER_LISTENER_ENABLED:-false}"
 
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem "${USER_SERVER}@${EC2_HOST}" \
             "docker network create dispatch-net 2>/dev/null || true && \
@@ -121,8 +123,11 @@ jobs:
                -e AWS_REGION='${AWS_REGION}' \
                -e S3_BUCKET_NAME='${S3_BUCKET_NAME}' \
                -e EFS_BASE_PATH=/app/efs \
+               -e AZURE_B2C_ISSUER_URI='${AZURE_B2C_ISSUER_URI}' \
+               -e AZURE_B2C_JWK_SET_URI='${AZURE_B2C_JWK_SET_URI}' \
                -e RABBITMQ_HOST=rabbitmq-dispatch \
                -e RABBITMQ_PORT='${RABBITMQ_PORT}' \
                -e RABBITMQ_USER='${RABBITMQ_USER}' \
                -e RABBITMQ_PASS='${RABBITMQ_PASS}' \
+               -e DISPATCH_CONSUMER_LISTENER_ENABLED='${CONSUMER_LISTENER_ENABLED}' \
                ${DOCKERHUB_USERNAME}/dispatch-flow-consumer:latest"

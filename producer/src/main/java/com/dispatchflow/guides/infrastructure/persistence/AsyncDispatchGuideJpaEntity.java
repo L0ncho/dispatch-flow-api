@@ -1,4 +1,4 @@
-package com.dispatchflow.consumer.infrastructure.persistence;
+package com.dispatchflow.guides.infrastructure.persistence;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "async_dispatch_guides")
-public class AsyncDispatchGuideEntity {
+public class AsyncDispatchGuideJpaEntity {
 
     public enum ProcessingStatus {
         PROCESSED,

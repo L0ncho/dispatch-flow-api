@@ -16,15 +16,32 @@ import com.dispatchflow.guides.application.ports.ObjectStoragePort;
 import com.dispatchflow.guides.domain.repositories.GuideRepository;
 import com.dispatchflow.guides.domain.services.GuideNumberGenerator;
 import com.dispatchflow.guides.domain.services.GuidePdfPathBuilder;
+import com.dispatchflow.guides.infrastructure.adapters.AsyncGuideJpaAdapter;
+import com.dispatchflow.guides.infrastructure.adapters.AsyncGuideStore;
+import com.dispatchflow.guides.infrastructure.adapters.CompositeGuideRepository;
+import com.dispatchflow.guides.infrastructure.adapters.JpaGuideRepository;
+import com.dispatchflow.guides.infrastructure.persistence.SpringDataAsyncDispatchGuideRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import java.time.Clock;
 
 @Configuration
 @EnableConfigurationProperties(EfsStorageProperties.class)
 public class GuideBeanConfiguration {
+
+    @Bean
+    public AsyncGuideStore asyncGuideStore(SpringDataAsyncDispatchGuideRepository asyncRepository) {
+        return new AsyncGuideJpaAdapter(asyncRepository);
+    }
+
+    @Bean
+    @Primary
+    public GuideRepository guideRepository(JpaGuideRepository jpaGuideRepository, AsyncGuideStore asyncGuideStore) {
+        return new CompositeGuideRepository(jpaGuideRepository, asyncGuideStore);
+    }
 
     @Bean
     public GuideNumberGenerator guideNumberGenerator() {

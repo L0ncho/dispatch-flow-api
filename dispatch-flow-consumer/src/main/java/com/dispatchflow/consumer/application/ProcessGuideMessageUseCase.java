@@ -48,7 +48,7 @@ public class ProcessGuideMessageUseCase {
     }
 
     @Transactional
-    public void execute(GuideCreationMessage message) {
+    public String execute(GuideCreationMessage message) {
         log.info("Processing guide message. trackingId={}", message.trackingId());
 
         long sequence = sequenceRepository.nextSequence();
@@ -67,9 +67,10 @@ public class ProcessGuideMessageUseCase {
         byte[] pdfContent = guidePdfEfsStorage.storeOnEfs(guide, clock.instant());
         guidePdfS3Storage.storeOnS3(guide, pdfContent, clock.instant());
 
+        String guideId = guide.getId().value();
         AsyncDispatchGuideEntity entity = new AsyncDispatchGuideEntity();
         entity.setTrackingId(message.trackingId());
-        entity.setGuideId(guide.getId().value());
+        entity.setGuideId(guideId);
         entity.setGuideNumber(guide.getGuideNumber().value());
         entity.setCarrierName(guide.getCarrierName());
         entity.setRecipientName(guide.getRecipientName());
@@ -86,6 +87,11 @@ public class ProcessGuideMessageUseCase {
         entity.setEfsPath(guide.getEfsPath());
 
         asyncDispatchGuideRepository.save(entity);
-        log.info("Guide processed successfully. trackingId={}, guideNumber={}", message.trackingId(), guide.getGuideNumber().value());
+        log.info(
+                "Guide processed successfully. trackingId={}, guideId={}, guideNumber={}",
+                message.trackingId(),
+                guideId,
+                guide.getGuideNumber().value());
+        return guideId;
     }
 }

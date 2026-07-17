@@ -67,10 +67,11 @@ class ProcessGuideMessageUseCaseTest {
                 "responsable@empresa.cl",
                 Instant.parse("2026-06-02T09:00:00Z"));
 
-        useCase.execute(message);
+        String guideId = useCase.execute(message);
 
         AsyncDispatchGuideEntity saved = asyncDispatchGuideRepository.savedEntities().getFirst();
         assertEquals("track-123", saved.getTrackingId());
+        assertEquals(guideId, saved.getGuideId());
         assertEquals(AsyncDispatchGuideEntity.ProcessingStatus.PROCESSED, saved.getStatus());
         assertEquals("dispatch-flow-local", saved.getS3Bucket());
         assertNotNull(saved.getS3Key());
